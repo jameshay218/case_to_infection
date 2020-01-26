@@ -41,3 +41,23 @@ fit_gamma <- function(pars, dat){
   sum(dgamma_mean(dat, mean, var, TRUE))
 }
 
+
+augment_infection_times <- function(dat, mean_incubation, var_incubation, geom_prob){
+  which_to_sim <- which(is.na(dat$date_onset_symptoms) & !is.na(dat$date_confirmation))
+  n_to_sim <- nrow(dat[which_to_sim,])
+  sim_confirmation_delays <- rgeom(n_to_sim, geom_prob) + 1
+  dat[which_to_sim,"date_onset_symptoms"] <- dat[which_to_sim,"date_confirmation"] - sim_confirmation_delays
+  
+  
+  which_to_sim_infection <- which(!is.na(other_dat_china$date_onset_symptoms))
+  sim_incubation_times <- rgamma_mean(nrow(other_dat_china[which_to_sim_infection,]), mean_incubation, var_incubation)
+  dat$date_infection <- dat$date_onset_symptoms
+  dat[which_to_sim_infection,"date_infection"] <- dat[which_to_sim_infection,"date_onset_symptoms"] - sim_incubation_times
+  
+  return(list(augmented_symptom_onsets=dat$date_onset_symptoms,
+              augmented_infection_times=dat$date_infection   
+         ))
+  
+  
+  
+}

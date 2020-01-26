@@ -1,5 +1,6 @@
 Turning nCoV case reports into infection incidence
 ================
+James Hay <jhay@hsph.harvard.edu>
 
 ## Introduction
 
@@ -230,6 +231,10 @@ ggplot(overall_dat) +
   - The reporting delay distribution has definitely changed over time.
     Again, this could be a function oof \(t\) rather than a single
     uniform distribution.
+
+## Acknowledgements
+
+Thanks Amy Dighe for checking that the logic here makes sense.
 
 ## References
 

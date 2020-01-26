@@ -1,5 +1,6 @@
 ---
 title: "Turning nCoV case reports into infection incidence"
+author: James Hay <jhay@hsph.harvard.edu>
 output:
   rmarkdown::github_document
 ---
@@ -113,6 +114,8 @@ ggplot(overall_dat) +
 * We could use the actual [delay distribution](http://virological.org/t/epidemiological-data-from-the-ncov-2019-outbreak-early-descriptions-from-publicly-available-data/337) from the line list data rather than a uniform distribution over 8 days
 * The reporting delay distribution has definitely changed over time. Again, this could be a function oof $t$ rather than a single uniform distribution.
 
+## Acknowledgements
+Thanks Amy Dighe for checking that the logic here makes sense.
 
 ## References
 1. Cauchemez S, Fraser C, Van Kerkhove MD, Donnelly CA, Riley S, Rambaut A, et al. Middle East respiratory syndrome coronavirus: quantification of the extent of the epidemic, surveillance biases, and transmissibility. LANCET Infect Dis. 2014;14: 50–56. doi:10.1016/S1473-3099(13)70304-9

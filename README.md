@@ -229,7 +229,7 @@ ggplot(overall_dat) +
     from the line list data rather than a uniform distribution over 8
     days
   - The reporting delay distribution has definitely changed over time.
-    Again, this could be a function oof \(t\) rather than a single
+    Again, this could be a function of \(t\) rather than a single
     uniform distribution.
 
 ## Acknowledgements

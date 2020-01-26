@@ -4,7 +4,7 @@ James Hay <jhay@hsph.harvard.edu>
 
 ## Introduction
 
-Available line list data for SARS-nCoV mostly show the date of report
+Available line list data for 2019-nCoV mostly show the date of report
 and not the date of infection onset. These reported cases therefore do
 not directly represent underlying transmission dynamics, but rather the
 day at which sick individuals become known to the healthcare system

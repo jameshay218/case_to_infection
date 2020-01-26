@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Introduction
-Available line list data for SARS-nCoV mostly show the date of report and not the date of infection onset. These reported cases therefore do not directly represent underlying transmission dynamics, but rather the day at which sick individuals become known to the healthcare system (plus some delay in reporting). To understand the dynamics of the outbreak, it is more informative to use the incidence curve for infections rather than case reports. Here, I try to generate a more realistic infection incidence curves for the aggregated case report data from Wuhan.
+Available line list data for 2019-nCoV mostly show the date of report and not the date of infection onset. These reported cases therefore do not directly represent underlying transmission dynamics, but rather the day at which sick individuals become known to the healthcare system (plus some delay in reporting). To understand the dynamics of the outbreak, it is more informative to use the incidence curve for infections rather than case reports. Here, I try to generate a more realistic infection incidence curves for the aggregated case report data from Wuhan.
 
 ## Method
 Individuals undergo the following progression from infection:

@@ -175,7 +175,7 @@ this from the date of symptom onset.
 p_data_augmented_example
 ```
 
-    ## Warning: Removed 2 rows containing non-finite values (stat_bin).
+    ## Warning: Removed 3 rows containing non-finite values (stat_bin).
 
     ## Warning: Removed 16 rows containing missing values (geom_bar).
 

@@ -1,8 +1,7 @@
 ---
 title: "Turning nCoV case reports into infection incidence"
 output:
-  html_document: default
-  pdf_document: default
+  rmarkdown::github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -112,6 +111,7 @@ ggplot(overall_dat) +
 ## Comments
 * Modifying case data in this way might be useful as sensitivity analyses for models using the case reports as incidence (which is problematic if done naively)
 * We could use the actual [delay distribution](http://virological.org/t/epidemiological-data-from-the-ncov-2019-outbreak-early-descriptions-from-publicly-available-data/337) from the line list data rather than a uniform distribution over 8 days
+* The reporting delay distribution has definitely changed over time. Again, this could be a function oof $t$ rather than a single uniform distribution.
 
 
 ## References

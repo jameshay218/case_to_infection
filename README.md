@@ -140,8 +140,7 @@ First, I calculated the distribution of times between symptom onset and
 date of confirmation *where known*. I assumed that cases had a reporting
 delay of *at least* one day (so the couple of dcases with a delay less
 than this were set to 1 day) Then, I fit a geometric distribution
-through these data. Note that the fit isn’t that great, so can probably
-do better.
+through these data.
 
 ``` r
 p_other_confirm_fit
@@ -150,6 +149,17 @@ p_other_confirm_fit
 ![](README_files/figure-gfm/unnamed-chunk-2-1.png)<!-- --> The red line
 shows the geometric distribution fit. Dashed vertical line indicates
 first day post symptoms that confirmation could occur.
+
+### Hospitalisation delay distribution
+
+Not used for the augmentation step, but for prosperity here’s the
+hospitalisation delay distribution:
+
+``` r
+p_other_hosp_fit
+```
+
+![](README_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 ### Incubation period distribution
 
@@ -161,7 +171,7 @@ estimates for SARS<sup>5</sup>.
 p_incubation
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 ### Example augmented dataset
 
@@ -175,11 +185,11 @@ this from the date of symptom onset.
 p_data_augmented_example
 ```
 
-    ## Warning: Removed 3 rows containing non-finite values (stat_bin).
+    ## Warning: Removed 4 rows containing non-finite values (stat_bin).
 
     ## Warning: Removed 16 rows containing missing values (geom_bar).
 
-![](README_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ### Bootstrapped incidence curves
 

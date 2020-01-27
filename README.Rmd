@@ -55,12 +55,17 @@ I assumed that the incubation period for 2019-nCoV has a mean of 10 days based o
 
 ## Results
 ### Confirmation delay distribution
-First, I calculated the distribution of times between symptom onset and date of confirmation *where known*. I assumed that cases had a reporting delay of *at least* one day (so the couple of dcases with a delay less than this were set to 1 day) Then, I fit a geometric distribution through these data. Note that the fit isn't that great, so can probably do better.
+First, I calculated the distribution of times between symptom onset and date of confirmation *where known*. I assumed that cases had a reporting delay of *at least* one day (so the couple of dcases with a delay less than this were set to 1 day) Then, I fit a geometric distribution through these data.
 ```{r}
 p_other_confirm_fit
 ```
 The red line shows the geometric distribution fit. Dashed vertical line indicates first day post symptoms that confirmation could occur.
 
+### Hospitalisation delay distribution
+Not used for the augmentation step, but for prosperity here's the hospitalisation delay distribution:
+```{r}
+p_other_hosp_fit
+```
 
 ### Incubation period distribution
 Next, I generated a gamma distribution for the incubation period based on a mean of 10 days and variance of 12.33 days matching previous estimates for SARS^5^.

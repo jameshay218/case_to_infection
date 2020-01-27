@@ -4,14 +4,21 @@ library(ggplot2)
 library(tidyverse)
 library(lubridate)
 library(cowplot)
+library(tibble)
+library(patchwork)
+library(ggpmisc)
 library(ggpubr)
 library(plyr)
 source("code/analysis_functions.R")
 
-## Assumed parameters
-mean_incubation <- 10
-var_incubation <- 12.33
-repeats <- 1000
+hubei_data_path <- "~/GitHub/nCoV2019/ncov_hubei.csv"
+other_data_path <- "~/GitHub/nCoV2019/ncov_outside_hubei.csv"
+
+key_colnames <- c("ID","age","country", "sex","city","province",
+                  "latitude","longitude")
+var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hospital")
+use_colnames <- c(key_colnames, var_colnames)
+
 
 ## First step is to clean and take a look at the data
 ## This combines the data for Hubei and other locations in China
@@ -54,7 +61,7 @@ fit_line_dat2 <- data.frame(x=times,y=fit_line2)
 p_other_hosp_fit<- ggplot(other_dat1) + 
   geom_histogram(aes(x=hospitalisation_delay,y=..density..),binwidth=1) +
   geom_line(data=fit_line_dat2, aes(x=x,y=y), col="red") +
-  scale_x_continuous(breaks=seq(0,5,by=1)) +
+  scale_x_continuous(breaks=seq(0,25,by=1)) +
   ggtitle("Distribution of delays between symptom\n onset and hospitalisation (not great fit)") +
   theme_pubr()
 ## Fit isn't great for first day
@@ -75,7 +82,6 @@ p_incubation <- ggplot(inc_data) +
   scale_x_continuous(expand=c(0,0)) +
   theme_pubr()
 
-assumption_plot <- plot_grid(p_other_confirm_fit, p_incubation,ncol=2,align="hv")
 #assumption_plot
 ## Now for each reported case without symptom onset time, going to generate a random
 ## symptom onset time from the geometric distribution
@@ -116,11 +122,11 @@ p_data_augmented_example <- ggplot(other_dat_tmp2) +
   ggtitle("Single simulation of augmented infection time data") +
   facet_wrap(~variable, ncol=2) +
   theme_bw() +
-  scale_x_date(limits=c(convert_date("01.12.2019"),convert_date("31.01.2020")),
+  scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(latest_date)),
                breaks="7 day") +
   theme(axis.text.x=element_text(angle=45,hjust=1),
         legend.position = "bottom")
-#p_data_augmented_example
+p_data_augmented_example
 
 ## FULL AUGMENTATION
 other_dat_china1 <- other_dat[other_dat$country == "China",]
@@ -147,7 +153,13 @@ sim_data_all$date <- as.Date(floor(sim_data_all$date), origin="1970-01-01")
 
 sim_data_sum <- ddply(sim_data_all, .(repeat_no, var, date), nrow)
 
+variable_key2 <- c("date_confirmation"="Confirmation date (known)",
+                   "date_onset_symptoms"="Onset of symptoms for cases observed to date",
+                   "date_admission_hospital"="Hospital admission date",
+                   "date_infection"="Augmented infection date for cases observed to date")
 
+################################################
+## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- ddply(sim_data_sum, .(date, var), function(x) quantile(x$V1, c(0.025,0.5,0.975),na.rm=TRUE))
 
@@ -155,39 +167,21 @@ sim_data_quantiles <- ddply(sim_data_sum, .(date, var), function(x) quantile(x$V
 confirm_data <- ddply(other_dat_china1[!is.na(other_dat_china1$date_confirmation),], ~date_confirmation, function(x) nrow(x))
 confirm_data$Variable <- "Confirmed cases"
 
-variable_key2 <- c("date_confirmation"="Confirmation date (known)",
-                  "date_onset_symptoms"="Onset of symptoms for cases observed to date",
-                  "date_admission_hospital"="Hospital admission date",
-                  "date_infection"="Augmented infection date for cases observed to date")
-
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
-
 colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper")
-augmented_data_plot <- ggplot(sim_data_quantiles) +
-  geom_bar(data=confirm_data,aes(x=date_confirmation,y=V1,fill=Variable),stat="identity") +
-  geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
-  geom_line(aes(x=date, y=median,col=Variable),size=1) +
-  scale_y_continuous(limits=c(0,300),expand=c(0,0),breaks=seq(0,300,by=25)) +
-  scale_x_date(limits=c(convert_date("01.12.2019"),convert_date("26.01.2020")),
-               breaks="5 day") + 
-  scale_fill_manual(values=c("orange","grey40","blue")) + scale_color_manual(values=c("orange","blue")) +
-  ggtitle("Augmented and observed timings of infection and symptom onset in China") +
-  ylab("Count") + xlab("Date of event") +
-  theme_pubr() +
-  theme(axis.text.x=element_text(angle=45,hjust=1),
-        panel.grid.major = element_line(colour="grey70"),
-        legend.position = "none") 
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data)
+
 #assumption_plot
 #augmented_data_plot
-pdf("augmented_data_plot.pdf",height=8,width=10)
-augmented_data_plot
-dev.off()
+#pdf("fig/augmented_data_plot.pdf",height=8,width=10)
+#augmented_data_plot
+#dev.off()
 
 
-pdf("assumption_plot.pdf",height=5,width=12)
-assumption_plot
-dev.off()
+#pdf("fig/assumption_plot.pdf",height=5,width=12)
+#assumption_plot
+#dev.off()
 ## Distribution of times for each individual
 sim_data_quantiles_indiv <- ddply(sim_data_all, .(individual, var), function(x) quantile(as.numeric(x$date), c(0.025,0.5,0.975),na.rm=TRUE))
 sim_data_quantiles_indiv$`2.5%` <- as.Date(sim_data_quantiles_indiv$`50%`, origin="1970-01-01")
@@ -196,6 +190,48 @@ sim_data_quantiles_indiv$`97.5%` <- as.Date(sim_data_quantiles_indiv$`97.5%`, or
 
 
 
+#######################
+## SPATIAL PLOTS
+#######################
+individual_key <- other_dat_china1[,c("ID","age","country","sex","city","province","latitude","longitude")]
+colnames(individual_key)[1] <- "individual"
+
+#sim_data_all_wide <- sim_data_all %>% 
+#  pivot_wider(id_cols=c("repeat_no","individual"),names_from="var",
+#              values_from="date")
+merged_data <- merge(individual_key, sim_data_all)
+merged_data <- merged_data[!is.na(merged_data$date),]
+#############################
+## Aggregate by province
+## Get confirmation time data
+confirm_data_province <- ddply(other_dat_china1[!is.na(other_dat_china1$date_confirmation),], .(province,date_confirmation), function(x) nrow(x))
+confirm_data_province$Variable <- "Confirmed cases"
+province_data <- ddply(merged_data, .(repeat_no, var, date, province), nrow)
+sim_data_quantiles_province <- ddply(province_data, .(date, var, province), 
+                                     function(x) quantile(x$V1, c(0.025,0.5,0.975),na.rm=TRUE))
+
+sim_data_quantiles_province$var <- variable_key2[sim_data_quantiles_province$var]
+colnames(sim_data_quantiles_province) <- c("date","Variable","province","lower","median","upper")
+
+total_confirmed_prov <- ddply(confirm_data_province, ~province, function(x) sum(x$V1))
+total_confirmed_prov <- total_confirmed_prov[order(-total_confirmed_prov$V1),]
+factor_order <- as.character(total_confirmed_prov$province)
+
+confirm_data_province$province <- factor(as.character(confirm_data_province$province), 
+                                            levels=factor_order)
+sim_data_quantiles_province$province <- factor(as.character(sim_data_quantiles_province$province), 
+                                         levels=factor_order)
+
+
+
+by_province <- plot_augmented_data_province(sim_data_quantiles_province, confirm_data_province)
+top_6 <- factor_order[1:6]
+by_province_top6 <- plot_augmented_data_province(sim_data_quantiles_province[sim_data_quantiles_province$province %in% top_6,], 
+                                                 confirm_data_province[confirm_data_province$province %in% top_6,])
+by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + theme(legend.text=element_text(size=10))
+
+#########################
+## FINAL HOUSEKEEPING
 ## Tidy up data to share
 sim_data_infections1 <- as.data.frame(t(sim_data_infections[1:100,]))
 for(i in seq_len(ncol(sim_data_infections1))){
@@ -212,4 +248,42 @@ sim_data_symptoms1 <- cbind(other_dat_china1, sim_data_symptoms1)
 
 write.csv(sim_data_infections1, "augmented_infection_times.csv")
 write.csv(sim_data_symptoms1, "augmented_symptom_times.csv")
+
+
+## Create results panel plot programmatically
+element_text_size <- 10
+text_size_theme <- theme(title=element_text(size=element_text_size), 
+                         axis.text=element_text(size=element_text_size), 
+                         axis.title = element_text(size=element_text_size))
+p_other_confirm_fit1 <- p_other_confirm_fit + text_size_theme
+p_incubation1 <- p_incubation + text_size_theme
+assumption_plot <- plot_grid(p_other_confirm_fit1, p_incubation1,ncol=2,align="hv")
+augmented_data_plot1 <- augmented_data_plot + theme(legend.position=c(0.25,0.25))
+layout <- c(
+  area(t=0,b=12,l=0,r=18),
+  area(t=2,b=7,l=2,r=14)
+)
+
+results_panel <- augmented_data_plot1 + assumption_plot + plot_layout(design=layout)
+
+#pdf("fig/results_plot.pdf", height=8, width=12)
+#results_panel
+#dev.off()
+
+#png("fig/results_plot.png", height=8, width=12, units="in",res=300)
+#results_panel
+#dev.off()
+
+#pdf("fig/by_province.pdf", height=12, width=12)
+#by_province
+#dev.off()
+
+#png("fig/by_province.png", height=12, width=12, units="in",res=300)
+#by_province
+#dev.off()
+
+png("fig/by_province_top6.png", height=8, width=10, units="in",res=300)
+by_province_top6
+dev.off()
+
 

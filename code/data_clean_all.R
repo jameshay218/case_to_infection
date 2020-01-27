@@ -1,10 +1,8 @@
 ## Get hubei data
-github_dat_path <- "~/GitHub/nCoV2019/ncov_hubei.csv"
-hubei_dat <- read.csv(github_dat_path, stringsAsFactors=FALSE)
+hubei_dat <- read.csv(hubei_data_path, stringsAsFactors=FALSE)
 
 ## For this, only need some of the variables
 colnames(hubei_dat)
-use_colnames <- c("age","country", "sex","date_confirmation","date_onset_symptoms","date_admission_hospital")
 hubei_dat <- hubei_dat[,use_colnames]
 
 #########
@@ -24,9 +22,7 @@ hubei_dat$date_confirmation <- convert_date(hubei_dat$date_confirmation)
 hubei_dat$hubei <- 1
 
 ## Get NON hubei data
-github_dat_path <- "~/GitHub/nCoV2019/ncov_outside_hubei.csv"
-other_dat <- read.csv(github_dat_path, stringsAsFactors=FALSE)
-use_colnames <- c("age","country", "sex","date_confirmation","date_onset_symptoms","date_admission_hospital")
+other_dat <- read.csv(other_data_path, stringsAsFactors=FALSE)
 
 ## NON HUBEI DATA
 #########
@@ -50,10 +46,12 @@ other_dat <- rbind(other_dat, hubei_dat)
 other_dat$hubei <- as.factor(other_dat$hubei)
 other_dat <- other_dat[other_dat$country == "China",]
 
+key_colnames <- c(key_colnames ,"hubei")
+
 print(paste0("Number of given confirmation dates (ie. max we can augment): ", nrow(other_dat[!is.na(other_dat$date_confirmation) | !is.na(other_dat$date_onset_symptoms),])))
 
 ## Have a look at these variables over time
-other_dat_tmp <- reshape2::melt(other_dat, id.vars=c("age","sex","country","hubei"))
+other_dat_tmp <- reshape2::melt(other_dat, id.vars=key_colnames)
 other_dat_tmp <- other_dat_tmp %>% drop_na()
 p_other_data <- ggplot(other_dat_tmp) + 
   geom_histogram(aes(x=value, fill=hubei),stat="count") +

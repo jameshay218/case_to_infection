@@ -7,9 +7,21 @@ output:
 ---
 
 ```{r setup, include=TRUE,message=FALSE,warning=FALSE}
+## Assumed parameters
+mean_incubation <- 10
+var_incubation <- 12.33
+repeats <- 1000
+latest_date <- as.Date("2020-01-27",origin="1970-01-01")
+
 source("code/analysis.R")
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE) 
 ```
+
+## Updates
+10am 27/01/2019 
+* Added same plot facetted by province
+* Ran sensitivity with mean incubation period of 5 days
+
 
 ## Introduction
 Available line list data for 2019-nCoV mostly show the date of report and not the date of infection onset. These reported cases therefore do not directly represent underlying transmission dynamics, but rather the day at which sick individuals become known to the healthcare system (plus some delay in reporting). To understand the dynamics of the outbreak, it is more informative to use the incidence curve for infections rather than case reports. Here, I try to generate realistic infection and symptom onset incidence curves that makes use of the confirmed case data from Hubei and elsewhere in China. I use a bootstrapping technique to propagate uncertainty through the predictions.
@@ -81,7 +93,28 @@ p_data_augmented_example
 
 ### Bootstrapped incidence curves
 To propagate the randomness from these distributions and thereby reflect uncertainty in onset times, I repeated this process 1000 times to generate 95\% quantiles on the incidence curves. Note that the infection incidence curve drops towards the end. This is because a large number of infections that occured in the past have not yet been included in the case confirmation counts.
-![Augmented infection incidence, symptom onset incidence and confirmation dates.](fig/fig1.png)
+```{r, fig.width=12, fig.height=8}
+results_panel_10day <- results_panel
+results_panel_10day
+```
+
+## Spatial variation 
+Same analysis, but with augmented times stratified by province. Note that this reveals that the augmented times use both confirmed cases and those with reported symptom onsets, which is why the orange/blue lines can overtake the grey.
+```{r, fig.width=12, fig.height=12}
+by_province
+```
+
+
+## Shorter incubation period
+```{r, fig.width=12, fig.height=8}
+## Assumed parameters
+mean_incubation <- 5
+var_incubation <- 12.33
+latest_date <- as.Date("2020-01-27",origin="1970-01-01")
+
+source("code/analysis.R")
+results_panel
+```
 
 ## Comments
 * I have included 100 bootstrapped infection time and symptom onset time data sets in the git repo. These should match the line list data, so can be merged.
@@ -89,7 +122,7 @@ To propagate the randomness from these distributions and thereby reflect uncerta
 * The reporting delay distribution has definitely changed over time. Again, this could be a function of $t$ rather than a single uniform distribution.
 
 ## Acknowledgements
-Thanks Amy Dighe for checking that the logic here makes sense.
+Thanks Amy Dighe and Charlie Whittaker for checking that the logic here makes sense.
 
 ## References
 1. Liu et al. Transmission dynamics of 2019 novel coronavirus (2019-nCoV). bioRxiv 2020 doi:https://doi.org/10.1101/2020.01.25.919787

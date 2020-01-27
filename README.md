@@ -3,14 +3,25 @@ Turning nCoV case reports into infection incidence
 James Hay <jhay@hsph.harvard.edu>
 
 ``` r
+## Assumed parameters
+mean_incubation <- 10
+var_incubation <- 12.33
+repeats <- 1000
+latest_date <- as.Date("2020-01-27",origin="1970-01-01")
+
 source("code/analysis.R")
 ```
 
     ## [1] "Number of given confirmation dates (ie. max we can augment): 784"
 
 ``` r
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE) 
 ```
+
+## Updates
+
+10am 27/01/2019 \* Added same plot facetted by province \* Ran
+sensitivity with mean incubation period of 5 days
 
 ## Introduction
 
@@ -109,20 +120,27 @@ different.
 print(head(other_dat_china1))
 ```
 
-    ##    age country sex date_confirmation date_onset_symptoms
-    ## 5        China            2020-01-22                <NA>
-    ## 6        China            2020-01-21                <NA>
-    ## 7        China            2020-01-21                <NA>
-    ## 8        China                  <NA>                <NA>
-    ## 9        China                  <NA>                <NA>
-    ## 10       China                  <NA>                <NA>
-    ##    date_admission_hospital hubei confirmation_delay hospitalisation_delay
-    ## 5                     <NA>     0                 NA                    NA
-    ## 6                     <NA>     0                 NA                    NA
-    ## 7                     <NA>     0                 NA                    NA
-    ## 8                     <NA>     0                 NA                    NA
-    ## 9                     <NA>     0                 NA                    NA
-    ## 10                    <NA>     0                 NA                    NA
+    ##    ID age country sex  city province latitude longitude date_confirmation
+    ## 5   1       China     Hefei    Anhui 31.82831  117.2248        2020-01-22
+    ## 6   2       China     Hefei    Anhui 31.82831  117.2248        2020-01-21
+    ## 7   3       China     Hefei    Anhui 31.82831  117.2248        2020-01-21
+    ## 8   4       China     Hefei    Anhui 31.82831  117.2248              <NA>
+    ## 9   5       China     Hefei    Anhui 31.82831  117.2248              <NA>
+    ## 10  6       China     Lu'an    Anhui 31.73450  116.5214              <NA>
+    ##    date_onset_symptoms date_admission_hospital hubei confirmation_delay
+    ## 5                 <NA>                    <NA>     0                 NA
+    ## 6                 <NA>                    <NA>     0                 NA
+    ## 7                 <NA>                    <NA>     0                 NA
+    ## 8                 <NA>                    <NA>     0                 NA
+    ## 9                 <NA>                    <NA>     0                 NA
+    ## 10                <NA>                    <NA>     0                 NA
+    ##    hospitalisation_delay
+    ## 5                     NA
+    ## 6                     NA
+    ## 7                     NA
+    ## 8                     NA
+    ## 9                     NA
+    ## 10                    NA
 
 ## Parameters
 
@@ -185,7 +203,7 @@ this from the date of symptom onset.
 p_data_augmented_example
 ```
 
-    ## Warning: Removed 4 rows containing non-finite values (stat_bin).
+    ## Warning: Removed 6 rows containing non-finite values (stat_bin).
 
     ## Warning: Removed 16 rows containing missing values (geom_bar).
 
@@ -198,8 +216,58 @@ uncertainty in onset times, I repeated this process 1000 times to
 generate 95% quantiles on the incidence curves. Note that the infection
 incidence curve drops towards the end. This is because a large number of
 infections that occured in the past have not yet been included in the
-case confirmation counts. ![Augmented infection incidence, symptom onset
-incidence and confirmation dates.](fig/fig1.png)
+case confirmation counts.
+
+``` r
+results_panel_10day <- results_panel
+results_panel_10day
+```
+
+    ## Warning: Removed 54 rows containing missing values (geom_path).
+
+![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+## Spatial variation
+
+Same analysis, but with augmented times stratified by province. Note
+that this reveals that the augmented times use both confirmed cases and
+those with reported symptom onsets, which is why the orange/blue lines
+can overtake the grey.
+
+``` r
+by_province
+```
+
+    ## Warning: Removed 2 rows containing missing values (geom_path).
+
+![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+## Shorter incubation period
+
+``` r
+## Assumed parameters
+mean_incubation <- 5
+var_incubation <- 12.33
+latest_date <- as.Date("2020-01-27",origin="1970-01-01")
+
+source("code/analysis.R")
+```
+
+    ## [1] "Number of given confirmation dates (ie. max we can augment): 784"
+
+    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
+    
+    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
+    
+    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
+
+``` r
+results_panel
+```
+
+    ## Warning: Removed 53 rows containing missing values (geom_path).
+
+![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ## Comments
 
@@ -216,7 +284,8 @@ incidence and confirmation dates.](fig/fig1.png)
 
 ## Acknowledgements
 
-Thanks Amy Dighe for checking that the logic here makes sense.
+Thanks Amy Dighe and Charlie Whittaker for checking that the logic here
+makes sense.
 
 ## References
 

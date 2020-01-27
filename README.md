@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Updates
 
-10am 27/01/2019 \* Added same plot facetted by province \* Ran
+10am 27/01/2019: \* Added same plot facetted by province \* Ran
 sensitivity with mean incubation period of 5 days
 
 ## Introduction
@@ -223,7 +223,7 @@ results_panel_10day <- results_panel
 results_panel_10day
 ```
 
-    ## Warning: Removed 54 rows containing missing values (geom_path).
+    ## Warning: Removed 70 rows containing missing values (geom_path).
 
 ![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
@@ -238,7 +238,7 @@ can overtake the grey.
 by_province
 ```
 
-    ## Warning: Removed 2 rows containing missing values (geom_path).
+    ## Warning: Removed 58 rows containing missing values (geom_path).
 
 ![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
@@ -265,7 +265,7 @@ source("code/analysis.R")
 results_panel
 ```
 
-    ## Warning: Removed 53 rows containing missing values (geom_path).
+    ## Warning: Removed 56 rows containing missing values (geom_path).
 
 ![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 

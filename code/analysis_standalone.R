@@ -19,6 +19,9 @@ key_colnames <- c("ID","age","country", "sex","city","province",
 var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hospital")
 use_colnames <- c(key_colnames, var_colnames)
 
+mean_incubation <- 10
+var_incubation <- 12.33
+repeats <- 100
 
 ## First step is to clean and take a look at the data
 ## This combines the data for Hubei and other locations in China
@@ -214,9 +217,9 @@ confirm_data_province <- ddply(other_dat_china1[!is.na(other_dat_china1$date_con
 confirm_data_province$Variable <- "Confirmed cases"
 province_data <- ddply(merged_data, .(repeat_no, var, date, province), nrow)
 sim_data_zeros_prov <- expand.grid(repeat_no=unique(province_data$repeat_no),
-                                   var=unique(province_data$var),
-                                   province=unique(province_data$province),
-                                   date=unique(province_data$date))
+                              var=unique(province_data$var),
+                              province=unique(province_data$province),
+                              date=unique(province_data$date))
 province_data <- merge(province_data, sim_data_zeros_prov,all=TRUE)
 province_data[is.na(province_data$V1),"V1"] <- 0
 
@@ -231,9 +234,9 @@ total_confirmed_prov <- total_confirmed_prov[order(-total_confirmed_prov$V1),]
 factor_order <- as.character(total_confirmed_prov$province)
 
 confirm_data_province$province <- factor(as.character(confirm_data_province$province), 
-                                         levels=factor_order)
+                                            levels=factor_order)
 sim_data_quantiles_province$province <- factor(as.character(sim_data_quantiles_province$province), 
-                                               levels=factor_order)
+                                         levels=factor_order)
 
 
 
@@ -243,7 +246,6 @@ by_province_top6 <- plot_augmented_data_province(sim_data_quantiles_province[sim
                                                  confirm_data_province[confirm_data_province$province %in% top_6,])
 by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + theme(legend.text=element_text(size=10))
 by_province_top6
-
 #########################
 ## FINAL HOUSEKEEPING
 ## Tidy up data to share
@@ -279,25 +281,25 @@ layout <- c(
 )
 
 results_panel <- augmented_data_plot1 + assumption_plot + plot_layout(design=layout)
-# 
-# pdf("fig/results_plot.pdf", height=8, width=12)
-# results_panel
-# dev.off()
-# 
-# png("fig/results_plot.png", height=8, width=12, units="in",res=300)
-# results_panel
-# dev.off()
-# 
-# pdf("fig/by_province.pdf", height=12, width=12)
-# by_province
-# dev.off()
-# 
-# png("fig/by_province.png", height=12, width=12, units="in",res=300)
-# by_province
-# dev.off()
-# 
-# png("fig/by_province_top6.png", height=8, width=10, units="in",res=300)
-# by_province_top6
-# dev.off()
+
+#pdf("fig/results_plot.pdf", height=8, width=12)
+#results_panel
+#dev.off()
+
+#png("fig/results_plot.png", height=8, width=12, units="in",res=300)
+#results_panel
+#dev.off()
+
+#pdf("fig/by_province.pdf", height=12, width=12)
+#by_province
+#dev.off()
+
+#png("fig/by_province.png", height=12, width=12, units="in",res=300)
+#by_province
+#dev.off()
+
+#png("fig/by_province_top6.png", height=8, width=10, units="in",res=300)
+#by_province_top6
+#dev.off()
 
 

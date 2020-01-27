@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Updates
-10am 27/01/2019 
+10am 27/01/2019:
 * Added same plot facetted by province
 * Ran sensitivity with mean incubation period of 5 days
 

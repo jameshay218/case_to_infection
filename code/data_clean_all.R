@@ -1,10 +1,10 @@
-## Get hubei data
-hubei_dat <- read.csv(hubei_data_path, stringsAsFactors=FALSE)
-
+############################
+## 1. CLEAN DATES
+############################
 ## For this, only need some of the variables
 colnames(hubei_dat)
-hubei_dat <- hubei_dat[,use_colnames]
-
+hubei_dat <- hubei_dat %>% select(use_colnames)
+hubei_dat$age <- as.character(hubei_dat$age)
 #########
 ## Clean up dates
 unique(hubei_dat$date_onset_symptoms)
@@ -21,11 +21,9 @@ hubei_dat$date_admission_hospital <- convert_date(hubei_dat$date_admission_hospi
 hubei_dat$date_confirmation <- convert_date(hubei_dat$date_confirmation)
 hubei_dat$hubei <- 1
 
-## Get NON hubei data
-other_dat <- read.csv(other_data_path, stringsAsFactors=FALSE)
-
 ## NON HUBEI DATA
 #########
+other_dat$age <- as.character(other_dat$age)
 ## Clean up dates
 other_dat <- other_dat[,use_colnames]
 unique(other_dat$date_onset_symptoms)
@@ -42,64 +40,103 @@ other_dat$date_admission_hospital <- convert_date(other_dat$date_admission_hospi
 other_dat$date_confirmation <- convert_date(other_dat$date_confirmation)
 other_dat$hubei <- 0
 
-other_dat <- rbind(other_dat, hubei_dat)
-other_dat$hubei <- as.factor(other_dat$hubei)
-other_dat <- other_dat[other_dat$country == "China",]
+combined_dat <- rbind(other_dat, hubei_dat)
+combined_dat$hubei <- as.factor(combined_dat$hubei)
 
+key_colnames <- key_colnames[key_colnames != "hubei"]
 key_colnames <- c(key_colnames ,"hubei")
 
-print(paste0("Number of given confirmation dates (ie. max we can augment): ", nrow(other_dat[!is.na(other_dat$date_confirmation) | !is.na(other_dat$date_onset_symptoms),])))
+## Reorder factors by total number of confirmations
+all_confirmations <- combined_dat %>% 
+  select(country, date_confirmation) %>% 
+  drop_na() %>%
+  group_by(country) %>%
+  tally() %>%
+  arrange(-n)
+factor_order <- all_confirmations %>% pull(country)
+combined_dat$country <- factor(combined_dat$country, levels=factor_order)
+
+china_dat <- combined_dat[combined_dat$country == "China",]
+print(paste0("Number of given confirmation dates from China (ie. max we can augment): ", nrow(china_dat[!is.na(china_dat$date_confirmation) | !is.na(china_dat$date_onset_symptoms),])))
+
+combined_dat_melted <- reshape2::melt(combined_dat, id.vars=key_colnames)
+
+## Get more info on how many cases we have that are useable
+p_missing_dist <- combined_dat_melted %>% 
+  group_by(country, hubei, variable) %>% 
+  filter(country == "China") %>%
+  mutate(is_na = ifelse(is.na(value), "Missing", "Present")) %>%
+  ggplot() + 
+  geom_histogram(aes(x=is_na, fill=hubei),stat="count") +
+  facet_grid(hubei~variable, scales="free_y") +
+  xlab("Data missing?") +
+  ggtitle("Number of missing data entries for China in/outside of Hubei") +
+  scale_fill_manual(values=c("grey40","orange")) +
+  theme_bw()
+p_missing_dist
 
 ## Have a look at these variables over time
-other_dat_tmp <- reshape2::melt(other_dat, id.vars=key_colnames)
-other_dat_tmp <- other_dat_tmp %>% drop_na()
-p_other_data <- ggplot(other_dat_tmp) + 
+combined_dat_melted <- combined_dat_melted %>% drop_na()
+p_other_data <- ggplot(combined_dat_melted) + 
   geom_histogram(aes(x=value, fill=hubei),stat="count") +
   facet_wrap(~variable, ncol=1,scales="free_y") +
   theme_bw() +
   scale_fill_manual(values=c("grey40","orange")) +
   scale_x_date(limits=c(convert_date("01.12.2019"),convert_date("31.01.2020")),
-               breaks="2 day") +
-  theme(axis.text.x=element_text(angle=45,hjust=1))
+               breaks="7 day") +
+  xlab("Date") + ylab("Count") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) + 
+  facet_wrap(~country, scales="free_y")
 p_other_data
 
-
-## Confirmation delay distribution from symptom onset
-other_dat$confirmation_delay <- as.integer(other_dat$date_confirmation - other_dat$date_onset_symptoms)
-other_dat$hospitalisation_delay <- as.integer(other_dat$date_admission_hospital - other_dat$date_onset_symptoms)
-
 ##########################################
-## IMPORTANT, HANDLING OF OUTLIERS
+## Get confirmation and hospitalisation delays
 ##########################################
+combined_dat$confirmation_delay <- as.integer(combined_dat$date_confirmation - combined_dat$date_onset_symptoms)
+combined_dat$hospitalisation_delay <- as.integer(combined_dat$date_admission_hospital - combined_dat$date_onset_symptoms)
 
-## Clear outliers, one culprit has wrong year, the other I'm not sure so will remove
-other_dat[which(other_dat$hospitalisation_delay < 0), "date_onset_symptoms"] <- c("2019-12-30","2020-01-18")
-other_dat <- other_dat[which(other_dat$hospitalisation_delay >= 0 | is.na(other_dat$hospitalisation_delay)),]
+## Look for any outliers
+combined_dat %>% filter(combined_dat$confirmation_delay < 0)
+combined_dat %>% filter(combined_dat$hospitalisation_delay < 0)
 
-## Confirmation delay distribution from symptom onset
-other_dat$confirmation_delay <- as.integer(other_dat$date_confirmation - other_dat$date_onset_symptoms)
-other_dat$hospitalisation_delay <- as.integer(other_dat$date_admission_hospital - other_dat$date_onset_symptoms)
+## Currently one person in China with negative hosp delay. Remove
+combined_dat <- combined_dat %>% mutate(hospitalisation_delay = ifelse(hospitalisation_delay < 0, NA, hospitalisation_delay))
+combined_dat <- combined_dat %>% mutate(confirmation_delay = ifelse(confirmation_delay < 0, NA, confirmation_delay))
 
-## One case looks like an error. Remove for now
-other_dat1 <- other_dat[which(other_dat$hospitalisation_delay < 30),]
-##########################################
-
-p_other_hosp <- ggplot(other_dat1) + 
-  geom_histogram(aes(x=hospitalisation_delay,fill=hubei),stat="count") +
-  scale_y_continuous(breaks=seq(0,nrow(other_dat),by=5)) +
-  scale_x_continuous(breaks=seq(0,max(other_dat1$hospitalisation_delay + 10),by=1)) +
-  theme_bw() +
+## Have a look at delays by country, and hubei/outside hubei
+## Confirmation delay
+p_confirmation_delay_distribution <- ggplot(combined_dat) +
+  geom_histogram(aes(x=confirmation_delay,fill=hubei),stat="count",binwidth=1) +
   scale_fill_manual(values=c("grey40","orange")) +
-  theme(axis.text.x=element_text(angle=45,hjust=1))
-p_other_hosp
-
-other_dat2 <- other_dat[which(other_dat$confirmation_delay >= 0),]
-p_other_confirm <- ggplot(other_dat2) + 
-  geom_histogram(aes(x=confirmation_delay,fill=hubei),stat="count") +
-  scale_y_continuous(breaks=seq(0,nrow(other_dat),by=5)) +
-  scale_x_continuous(breaks=seq(0,max(other_dat2$confirmation_delay + 10),by=1)) +
+  ggtitle("Confirmation delay distribution from symptom onset") +
   theme_bw() +
+  xlab("Days delay") + ylab("Count") +
+  facet_wrap(~country)
+p_confirmation_delay_distribution
+
+p_confirmation_delay_china <- ggplot(combined_dat[combined_dat$country=="China",]) +
+  geom_histogram(aes(x=confirmation_delay,fill=hubei),stat="count",binwidth=1) +
   scale_fill_manual(values=c("grey40","orange")) +
-  theme(axis.text.x=element_text(angle=45,hjust=1))
-p_other_confirm
+  ggtitle("Hospitalisation delay distribution") +
+  theme_bw() +
+  xlab("Days delay from symptom onset") + ylab("Count") +
+  facet_wrap(~hubei)
+p_confirmation_delay_china
+
+## Hospitalisation delay
+p_hosp_delay_distribution <- ggplot(combined_dat) +
+  geom_histogram(aes(x=hospitalisation_delay,fill=hubei),stat="count",binwidth=1) +
+  scale_fill_manual(values=c("grey40","orange")) +
+  theme_bw() +
+  xlab("Days delay") + ylab("Count") +
+  facet_wrap(~country)
+p_hosp_delay_distribution
+
+p_hosp_delay_china <- ggplot(combined_dat[combined_dat$country=="China",]) +
+  geom_histogram(aes(x=hospitalisation_delay,fill=hubei),stat="count",binwidth=1) +
+  scale_fill_manual(values=c("grey40","orange")) +
+  theme_bw() +
+  xlab("Days delay") + ylab("Count") +
+  facet_wrap(~hubei)
+p_hosp_delay_china
 

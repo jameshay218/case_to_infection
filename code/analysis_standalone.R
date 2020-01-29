@@ -1,4 +1,5 @@
-setwd("~/Documents/case_to_infection/")
+#setwd("~/Documents/case_to_infection/")
+setwd("GitHub/case_to_infection/")
 
 library(ggplot2)
 library(tidyverse)

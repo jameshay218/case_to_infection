@@ -1,5 +1,5 @@
-#setwd("~/Documents/case_to_infection/")
-setwd("GitHub/case_to_infection/")
+setwd("~/Documents/case_to_infection/")
+#setwd("GitHub/case_to_infection/")
 
 library(ggplot2)
 library(tidyverse)
@@ -11,18 +11,14 @@ library(ggpubr)
 library(maptools)
 library(maps)
 library(data.table)
+library(googlesheets4)
+
+date_today <- "29.01.2020"
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
 source("code/analysis_functions.R")
-source("code/plot_china_map.R")
-
-## load the data - try to only do this once otherwise auth token gets stale
-source("code/pull_data.R")
-## Comment out next line, as is used for automatic user input from above script
-1
-## If you don't have a google account, you can run this instead
-## source("code/load_data_manual.R")
+## source("code/plot_china_map.R")
 
 ## These column names will be kept as keys for the rest of the analysis
 key_colnames <- c("ID","age","country", "sex","city","province",
@@ -34,15 +30,53 @@ use_colnames <- c(key_colnames, var_colnames)
 ## Number of bootstrap samples to take. Set this to something small for a quick run
 repeats <- 100
 
+## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data
 ## This combines the data for Hubei and other locations in China
 ## Note this is ONLY China
-source("code/data_clean_all.R")
-china_dat <- combined_dat[combined_dat$country == "China",]
+source("code/pull_and_clean_linelist.R")
+source("code/pull_kudos_linelist.R")
+source("code/pull_arcgic_data.R")
+
+## The main thing returned from this is "combined_dat"
+## Let's make combined_dat into confirmed case totals
+## Date to expand over:
+first_date <- min(combined_dat$date_confirmation,na.rm=TRUE)
+last_date <- max(combined_dat$date_confirmation,na.rm=TRUE)
+dates <- first_date:last_date
+dates <- convert_date(dates)
+all_combos <- expand.grid(province=as.character(unique(combined_dat$province)),
+                          date_confirmation=dates) %>% arrange(province, date_confirmation)
+all_combos$province <- as.character(all_combos$province)
+confirmed_cases_linelist <- combined_dat %>% filter(!is.na(date_confirmation)) %>% 
+  group_by(province, date_confirmation) %>% tally()  %>% ungroup() 
+
+confirmed_cases_linelist <- confirmed_cases_linelist %>% right_join(all_combos) %>% 
+  arrange(province, date_confirmation) %>% mutate(n=ifelse(is.na(n), 0, n))
+
+confirmed_cases_linelist$province <- factor(confirmed_cases_linelist$province, levels=levels(combined_dat$province))
+confirmed_cases_linelist <- confirmed_cases_linelist %>% 
+  mutate(pre_reports=date_confirmation <= convert_date("21.01.2020"))
+
+## Have a quick look to see how this compares to the ARCGIS data
+p_confirm_pre_arcgis <- ggplot(confirmed_cases_linelist) + 
+  geom_bar(aes(x=date_confirmation,y=n,fill=pre_reports),stat="identity") + 
+  facet_wrap(~province, scales="free_y")
+p_confirm_pre_arcgis
 
 ####################################
-## CONFIRMATION DELAY DISTRIBUTION
+## MERGE ARCGIS AND LINELIST DATA
 ####################################
+## Using linelist data for dates at and before 21.01.2020,
+## arcgis data otherwise
+combined_dat_final <- merge_data(combined_dat, use_data_diff, switch_date="21.01.2020")
+combined_dat_final$ID <- 1:nrow(combined_dat_final)
+
+
+####################################
+## OLD LINE LIST CONFIRMATION DELAY DISTRIBUTION
+####################################
+china_dat <- combined_dat[combined_dat$country == "China",]
 ## Any instant confirmations?
 china_dat %>% filter(confirmation_delay < 1)
 ## Assume that there is at least a 1 day delay to reporting, so < 1 day is set to 1
@@ -65,7 +99,7 @@ p_other_confirm_fit<- ggplot(china_dat) +
 p_other_confirm_fit
 
 ####################################
-## HOSPITALISATION DELAY DISTRIBUTION
+## OLD LINE LIST HOSPITALISATION DELAY DISTRIBUTION
 ####################################
 ## Assume that there is at least a 1 day delay to reporting, so < 1 day is set to 1
 use_delays <- china_dat %>% select(hospitalisation_delay) %>% drop_na() %>% pull(hospitalisation_delay)
@@ -84,6 +118,26 @@ p_other_hosp_fit<- ggplot(china_dat) +
 p_other_hosp_fit
 ## Fit isn't great for first day
 
+####################################
+## KUDOS LINE LIST CONFIRMATION DELAY
+####################################
+## Fit a geometric distribution to the confirmation delay distribution
+use_delays_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>% pull(delay)
+fit_kudos <- optim(c(0.1), fit_geometric, dat=use_delays_kudos-1,method="Brent",lower=0,upper=1)
+fit_kudos_line <- dgeom(seq(0,max(kudos_dat$delay,na.rm=TRUE),by=1),prob=fit_kudos$par)
+fit_line_kudos_dat <- data.frame(x=seq(1,max(kudos_dat$delay,na.rm=TRUE)+1,by=1),y=fit_kudos_line)
+
+p_confirm_delay_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>%
+  ggplot() + 
+  geom_histogram(aes(x=delay,y=..density..),binwidth=1,col="black") +
+  geom_line(data=fit_line_kudos_dat, aes(x=x,y=y), col="red",size=1) +
+  scale_x_continuous(breaks=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5),labels=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5)) +
+  scale_y_continuous(expand=c(0,0),limits=c(0,0.15)) +
+  geom_vline(xintercept=1,linetype="dashed") +
+  ylab("Probability density") + xlab("Days since symptom onset") +
+  ggtitle("Distribution of delays between symptom onset\n and confirmation, Kudos line list data") +
+  theme_pubr()
+p_confirm_delay_kudos
 
 ####################################
 ## SYMPTOM ONSET DISTRIBUTION
@@ -120,11 +174,10 @@ p_incubation
 #############################
 ## FULL AUGMENTATION
 #############################
-china_dat <- combined_dat[combined_dat$country == "China",]
 
 ## Now let's repeat this process many times to get a distribution
-sim_data_infections <- matrix(NA, nrow=repeats, ncol=nrow(china_dat))
-sim_data_symptoms <- matrix(NA, nrow=repeats, ncol=nrow(china_dat))
+sim_data_infections <- matrix(NA, nrow=repeats, ncol=nrow(combined_dat_final))
+sim_data_symptoms <- matrix(NA, nrow=repeats, ncol=nrow(combined_dat_final))
 
 ## For each sample, draw a Weibull distribution from the posterior for 
 ## the incubation period and generate augmented infection times for all individuals
@@ -135,10 +188,10 @@ for(i in seq_len(repeats)){
   sigma <- incu_period_rand$sigma
   
   ## Get symptom onset and infection times
-  tmp <- augment_infection_times(china_dat, 
+  tmp <- augment_infection_times(combined_dat_final, 
                                  inc_period_alpha=alpha, 
                                  inc_period_sigma=sigma, 
-                                 p_confirm_delay=fit1$par)
+                                 p_confirm_delay=fit_kudos$par)
   
   sim_data_infections[i,] <- tmp$augmented_infection_times
   sim_data_symptoms[i,] <- tmp$augmented_symptom_onsets
@@ -173,13 +226,36 @@ sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>%
   do(data.frame(t(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
 
 ## Get confirmation time data
-confirm_data <- china_dat %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
-confirm_data$Variable <- "Confirmed cases"
+confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
+confirm_data$Variable <- "Confirmed cases of infections that have been observed"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
 colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper")
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=500,ybreaks=50)
+
+source("code/unobserved_proportion.R")
+
+tmp <- which(rev(cumsum(prop_seen)) > 0.99)
+tmp[length(tmp)]
+threshold_99 <- convert_date(date_today) + times[tmp[length(tmp)]]
+
+tmp <- which(rev(cumsum(prop_seen)) > 0.8)
+tmp[length(tmp)]
+threshold_80 <- convert_date(date_today) + times[tmp[length(tmp)]]
+
+
+tmp <- which(rev(cumsum(prop_seen)) > 0.5)
+tmp[length(tmp)]
+threshold_50 <- convert_date(date_today) + times[tmp[length(tmp)]]
+
+
+tmp <- which(rev(cumsum(prop_seen)) > 0.2)
+tmp[length(tmp)]
+threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
+
+thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
+
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = "30.01.2020", thresholds)
 augmented_data_plot
 
 ## Distribution of times for each individual
@@ -199,14 +275,14 @@ sim_data_infections1 <- as.data.frame(t(sim_data_infections[1:100,]))
 for(i in seq_len(ncol(sim_data_infections1))){
   sim_data_infections1[,i] <- as.Date(floor(sim_data_infections1[,i]), origin="1970-01-01")
 }
-sim_data_infections1 <- bind_cols(china_dat,sim_data_infections1)
+sim_data_infections1 <- bind_cols(combined_dat_final,sim_data_infections1)
 
 
 sim_data_symptoms1 <- as.data.frame(t(sim_data_symptoms[1:100,]))
 for(i in seq_len(ncol(sim_data_symptoms1))){
   sim_data_symptoms1[,i] <- as.Date(floor(sim_data_symptoms1[,i]), origin="1970-01-01")
 }
-sim_data_infections1 <- bind_cols(china_dat,sim_data_symptoms1)
+sim_data_infections1 <- bind_cols(combined_dat_final,sim_data_symptoms1)
 
 write_csv(sim_data_infections1, path="augmented_data/augmented_infection_times.csv")
 write_csv(sim_data_symptoms1, path="augmented_data/augmented_symptom_times.csv")
@@ -219,19 +295,20 @@ text_size_theme <- theme(title=element_text(size=element_text_size),
                          axis.title = element_text(size=element_text_size))
 p_other_confirm_fit1 <- p_other_confirm_fit + text_size_theme
 p_incubation1 <- p_incubation + text_size_theme
-assumption_plot <- plot_grid(p_other_confirm_fit1, p_incubation1,ncol=2,align="hv")
-augmented_data_plot1 <- augmented_data_plot + theme(legend.position=c(0.25,0.25))
+p_confirm_delay_kudos <- p_confirm_delay_kudos + text_size_theme
+assumption_plot <- plot_grid(p_confirm_delay_kudos, p_incubation1,ncol=2,align="hv")
+augmented_data_plot1 <- augmented_data_plot + theme(legend.position=c(0.2,0.2)) 
 layout <- c(
   area(t=0,b=12,l=0,r=18),
   area(t=2,b=7,l=2,r=14)
 )
 
 results_panel <- augmented_data_plot1 + assumption_plot + plot_layout(design=layout)
-
+results_panel
 #######################
 ## SPATIAL PLOTS
 #######################
-individual_key <- china_dat[,c("ID","age","country","sex","city","province","latitude","longitude")]
+individual_key <- combined_dat_final[,c("ID","age","country","sex","city","province","latitude","longitude")]
 colnames(individual_key)[1] <- "individual"
 sim_data_all <- as_tibble(sim_data_all)
 
@@ -240,10 +317,10 @@ merged_data <- merged_data[!is.na(merged_data$date),]
 #############################
 ## Aggregate by province
 ## Get confirmation time data
-confirm_dat_province <- china_dat %>% filter(!is.na(china_dat$date_confirmation)) %>% 
+confirm_dat_province <- combined_dat_final %>% ungroup() %>% filter(!is.na(combined_dat_final$date_confirmation)) %>% 
   group_by(province, date_confirmation) %>% tally() %>%
   ungroup() %>% complete(province, date_confirmation, fill=list(n=0))
-confirm_dat_province$Variable <- "Confirmed cases"
+confirm_dat_province$Variable <- "Confirmed cases of infections that have been observed"
 
 province_data <- merged_data %>% 
   group_by(repeat_no, var, date, province) %>%
@@ -269,11 +346,11 @@ sim_data_quantiles_province$province <- factor(as.character(sim_data_quantiles_p
 by_province <- plot_augmented_data_province(sim_data_quantiles_province, confirm_dat_province)
 top_6 <- factor_order[1:6]
 by_province_top6 <- plot_augmented_data_province(sim_data_quantiles_province[sim_data_quantiles_province$province %in% top_6,], 
-                                                 confirm_dat_province[confirm_dat_province$province %in% top_6,])
+                                                 confirm_dat_province[confirm_dat_province$province %in% top_6,], max_date=date_today)
 by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + theme(legend.text=element_text(size=10))
 by_province_top6
 
 ## Plot time from start
-p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=75)
+p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
 p_start_delay_dist
 

@@ -124,16 +124,29 @@ plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax
 
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
-                                ymax=500,ybreaks=25){
-  p <- ggplot(data_quantiles) +
+                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700){
+  threshold_dat <- data.frame(xmin=c(convert_date("01.12.2019"), thresholds),
+                              xmax=c(thresholds, convert_date(max_date)),
+                              fills=c(">99%",">80%",">50%",">20%","<20%"))
+
+  p <- ggplot(data_quantiles)
+  if(!is.null(thresholds)) {
+    threshold_dat <- data.frame(text=c(">99%",">80%",">50%",">20%"),
+                                x_val=thresholds)
+    p <- p +    
+      geom_vline(xintercept=thresholds,linetype="dashed") +
+      geom_label(data=threshold_dat,aes(x=x_val, y=700, label=text))
+  }
+  p <- p +
+    #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
     geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
     geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
     geom_line(aes(x=date, y=median,col=Variable),size=1) +
     scale_y_continuous(limits=c(0,ymax),expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)),
                  breaks="5 day") + 
-    scale_fill_manual(values=c("orange","grey40","blue")) + 
-    scale_color_manual(values=c("orange","blue"),guide="none") +
+    scale_fill_manual(values=c("blue","grey40","orange")) + 
+    scale_color_manual(values=c("blue","orange"),guide="none") +
     ggtitle("Augmented and observed timings of infection and symptom onset in China") +
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +
@@ -150,8 +163,8 @@ plot_augmented_data_province <- function(data_quantiles_province, confirmed_data
   geom_line(aes(x=date, y=median,col=Variable),size=1) +
   scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)),
                breaks="7 day") + 
-  scale_fill_manual(values=c("orange","grey40","blue")) + 
-  scale_color_manual(values=c("orange","blue"),guide="none") +
+  scale_fill_manual(values=c("blue","grey40","orange")) + 
+  scale_color_manual(values=c("blue","orange"),guide="none") +
   ggtitle("Augmented and observed timings of infection and symptom onset in China by province\n ordered by total confirmed cases") +
     geom_hline(yintercept=0,linetype="dashed",col="grey80",size=0.5) +
   ylab("Count") + xlab("Date of event") +
@@ -164,4 +177,24 @@ plot_augmented_data_province <- function(data_quantiles_province, confirmed_data
         legend.text=element_text(size=12),
         legend.position = "bottom") 
   p
+}
+
+expand_arcgis <- function(arcgis_dat) {
+  arcgis_dat %>% group_by(date_confirmation, province, country) %>% filter(n > 0) %>% drop_na() %>% uncount(n)
+}
+
+merge_data <- function(linelist_dat, arcgis_dat, switch_date){
+  arcgis_dat <- arcgis_dat %>% select(province, raw_day, country_region, country, diff)
+  colnames(arcgis_dat) <- c("province","date_confirmation","country_region","country","n")
+  arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(country_region=="Mainland China", "China", country))
+  arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(province %in% c("Taiwan","Hong Kong","Tibet"), "China",country))
+  arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(is.na(country), as.character(province), country))
+  arcgis_dat <- arcgis_dat %>% filter(country == "China") %>% select(-country_region)
+  arcgis_dat <- arcgis_dat %>% mutate(n = ifelse(n < 0, 0, n))
+  arcgis_dat <- expand_arcgis(arcgis_dat)
+  
+  subset_combined_dat <- combined_dat %>% filter(date_confirmation <= convert_date(switch_date) & country == "China")
+  
+  final <- bind_rows(arcgis_dat, subset_combined_dat) %>% arrange(province, date_confirmation)
+  final
 }

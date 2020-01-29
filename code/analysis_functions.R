@@ -96,11 +96,37 @@ augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_c
          ))
 }
 
+#' Plot time from first infection in Hubei by province
+#' 
+plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax=100) {
+  melted_infs <- sim_data_infections_melted %>% as_tibble() %>% select(-var)
+  
+  melted_infs <- right_join(melted_infs, individual_key,by="individual")
+  start_inf_hubei <- melted_infs %>% group_by(repeat_no) %>% filter(province=="Hubei") %>% summarise(hubei_time=min(date,na.rm=TRUE))
+  start_times <- melted_infs %>% group_by(repeat_no, province) %>% summarise(start_time=min(date,na.rm=TRUE))
+  
+  all_data <- left_join(start_inf_hubei, start_times,by="repeat_no")
+  all_data <- all_data %>% mutate(delay=start_time-hubei_time)
+  
+  ## Order by delay
+  orders <- all_data %>% group_by(province) %>% summarise(mean_start=mean(delay)) %>% arrange(-mean_start) %>% pull(province)
+  all_data$province <- factor(all_data$province, levels=orders)
+  ggplot(all_data) + 
+    geom_violin(aes(y=delay, x=province),
+                draw_quantiles=c(0.025,0.5,0.975),scale="width",trim = TRUE,
+                fill="grey80") +
+    coord_flip() +
+    xlab("Province") + ylab("Delay between first infection in Hubei \nand first infection in province (days)") +
+    scale_y_continuous(limits=c(0,xmax)) +
+    theme_bw() 
+  
+}
+
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
                                 ymax=500,ybreaks=25){
   p <- ggplot(data_quantiles) +
-    geom_bar(data=confirmed_data,aes(x=date_confirmation,y=V1,fill=Variable),stat="identity") +
+    geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
     geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
     geom_line(aes(x=date, y=median,col=Variable),size=1) +
     scale_y_continuous(limits=c(0,ymax),expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
@@ -119,7 +145,7 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
 
 plot_augmented_data_province <- function(data_quantiles_province, confirmed_data_province, max_date="27.01.2020"){
   p <- ggplot(data_quantiles_province) +
-  geom_bar(data=confirmed_data_province,aes(x=date_confirmation,y=V1,fill=Variable),stat="identity") +
+  geom_bar(data=confirmed_data_province,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
   geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
   geom_line(aes(x=date, y=median,col=Variable),size=1) +
   scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)),

@@ -27,8 +27,8 @@ for(j in 1:days_past) {
 }
 par(mar = c(5, 5, 5, 5))
 total_days_considered <- length(prop_seen)
-times <- seq(-total_days_considered, -1, 1)
-plot(times, rev(cumsum(prop_seen)), type = "l", 
-     xlab = "Date",
-     ylab = "Proportion of Infections Occurring That Day \nThat Have Been Reported By the Current Day")
+times <- times_unobserved <- seq(-total_days_considered, -1, 1)
+#plot(times, rev(cumsum(prop_seen)), type = "l", 
+#     xlab = "Date",
+#     ylab = "Proportion of Infections Occurring That Day \nThat Have Been Reported By the Current Day")
 

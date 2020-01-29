@@ -1,13 +1,13 @@
 
 
 
-#pdf("fig/results_plot.pdf", height=8, width=12)
-#results_panel
-#dev.off()
+pdf("plots/results_plot.pdf", height=8, width=12)
+results_panel
+dev.off()
 
-#png("fig/results_plot.png", height=8, width=12, units="in",res=300)
-#results_panel
-#dev.off()
+png("plots/results_plot.png", height=8, width=12, units="in",res=300)
+results_panel
+dev.off()
 
 #pdf("fig/by_province.pdf", height=12, width=12)
 #by_province

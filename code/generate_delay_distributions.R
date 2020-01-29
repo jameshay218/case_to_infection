@@ -41,7 +41,7 @@ for(i in seq_along(use_dates)) {
   
   model_probs[i,] <- dgeom(0:40,probs[i])
 }
-plot(probs)
+#plot(probs)
 all_dat <- all_dat %>% complete(delay, start, fill=list(n=0))
 
 model_probs <- reshape2::melt(model_probs)

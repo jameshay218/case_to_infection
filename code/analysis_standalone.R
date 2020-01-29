@@ -28,7 +28,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 100
+repeats <- 1000
 
 ## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data
@@ -36,7 +36,7 @@ repeats <- 100
 ## Note this is ONLY China
 source("code/pull_and_clean_linelist.R")
 source("code/pull_kudos_linelist.R")
-source("code/pull_arcgic_data.R")
+source("code/pull_arcgis_data.R")
 
 ## The main thing returned from this is "combined_dat"
 ## Let's make combined_dat into confirmed case totals

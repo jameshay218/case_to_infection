@@ -2,301 +2,195 @@ Turning nCoV case reports into infection incidence
 ================
 James Hay <jhay@hsph.harvard.edu>
 
-``` r
-## Assumed parameters
-mean_incubation <- 10
-var_incubation <- 12.33
-repeats <- 1000
-latest_date <- as.Date("2020-01-27",origin="1970-01-01")
+Updates
+-------
 
-source("code/analysis.R")
-```
+6pm 29/01/2020:
 
-    ## [1] "Number of given confirmation dates (ie. max we can augment): 784"
+1.  Confirmation delay distribution now uses the "Kudos" line list data available [here](https://docs.google.com/spreadsheets/d/1jS24DjSPVWa4iuxuD4OAXrE3QeI8c9BC1hSlqr-NMiU/edit#gid=1187587451)<sup>1</sup>
+2.  Incubation period is now random draws from the posterior estimate from Backet et al. [here](https://www.medrxiv.org/content/10.1101/2020.01.27.20018986v1)<sup>2</sup>. In summary the mean is now around 5 days which is a big change.
+3.  Linelist data is used for the confirmation delay distribution and for confirmed case counts at and before 21.01.2020. However, from 22.01.2020 onwards, we used the confirmed case reports as posted [here](https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6)<sup>3</sup>.
+4.  The data cleaning and pulling pipeline is now automated to automatically pull from the google sheets using the `googlesheets4` package. This should improve reproducibility and make updating easier.
+5.  The main results panel now marks the times at which different percentages of infections that have happened are expected to have been observed.
+6.  Started some further analyses on time between sub-epidemic onsets and change in confirmation delay distribution over time.
+7.  Swapped the blue and orange colors - the focus should be on the infection incidence curve.
 
-``` r
-knitr::opts_chunk$set(echo = TRUE) 
-```
+10am 27/01/2020:
 
-## Updates
+1.  Added same plot facetted by province
+2.  Ran sensitivity with mean incubation period of 5 days
 
-10am 27/01/2019: \* Added same plot facetted by province \* Ran
-sensitivity with mean incubation period of 5 days
+Introduction
+------------
 
-## Introduction
+Available line list data and confirmed case reports for 2019-nCoV mostly show the date of report and not the date of infection onset. These reported cases therefore do not directly represent underlying transmission dynamics, but rather the day at which sick individuals become known to the healthcare system plus some delay in reporting. To understand the dynamics of the outbreak, it is more informative to use the incidence curve for infections rather than case reports. Here, I try to generate realistic infection and symptom onset incidence curves that makes use of the confirmed case data from Hubei and elsewhere in China. I use a bootstrapping technique to propagate uncertainty through the predictions.
 
-Available line list data for 2019-nCoV mostly show the date of report
-and not the date of infection onset. These reported cases therefore do
-not directly represent underlying transmission dynamics, but rather the
-day at which sick individuals become known to the healthcare system
-(plus some delay in reporting). To understand the dynamics of the
-outbreak, it is more informative to use the incidence curve for
-infections rather than case reports. Here, I try to generate realistic
-infection and symptom onset incidence curves that makes use of the
-confirmed case data from Hubei and elsewhere in China. I use a
-bootstrapping technique to propagate uncertainty through the
-predictions.
+This does *not* provide any new data nor does it provide any sort of forward projections. This is simply to generate a range of plausible infection and symptom onset curves that could have given rise to the reported case data.
 
-This does *not* provide any new data nor does it provide any sort of
-forward projections. This is simply to generate a range of plausible
-infection and symptom onset curves that could have given rise to the
-reported case data.
-
-Note that I have just seen this [bioarxiv
-preprint](https://www.biorxiv.org/content/10.1101/2020.01.25.919787v1),
-so have not included it yet<sup>1</sup>.
-
-## Old method
-
-The expected time of actual infection is given by:
-
-![\\text{expected day of infection} = \\text{day your case was
-confirmed} - \\text{expected delay from symptoms to confirmation} -
-\\text{expected incubation
-period}](https://latex.codecogs.com/png.latex?%5Ctext%7Bexpected%20day%20of%20infection%7D%20%3D%20%5Ctext%7Bday%20your%20case%20was%20confirmed%7D%20-%20%5Ctext%7Bexpected%20delay%20from%20symptoms%20to%20confirmation%7D%20-%20%5Ctext%7Bexpected%20incubation%20period%7D
-"\\text{expected day of infection} = \\text{day your case was confirmed} - \\text{expected delay from symptoms to confirmation} - \\text{expected incubation period}")
-
-The number of cases reported on a given day is therefore the sum of
-infections that occured on all preceding days multiplied by the
-probability that those cases entered the hospital (and were therefore
-reported) on that day of their infection.
-
-Another way of thinking about it is that the number of infections on a
-given day ![t](https://latex.codecogs.com/png.latex?t "t") is the sum of
-all cases that happened on all future days
-![i](https://latex.codecogs.com/png.latex?i "i"), multipled by the
-probability of a case that started on day
-![t](https://latex.codecogs.com/png.latex?t "t") entering healthcare
-![i-t](https://latex.codecogs.com/png.latex?i-t "i-t") days after
-infection.
-
-![X(t) = \\sum\_{i=t}^{t+t\_{max}}
-C(i)\*p(i-t)](https://latex.codecogs.com/png.latex?X%28t%29%20%3D%20%5Csum_%7Bi%3Dt%7D%5E%7Bt%2Bt_%7Bmax%7D%7D%20C%28i%29%2Ap%28i-t%29
-"X(t) = \\sum_{i=t}^{t+t_{max}} C(i)*p(i-t)")
-
-where ![X(t)](https://latex.codecogs.com/png.latex?X%28t%29 "X(t)") is
-the number of infections on day
-![t](https://latex.codecogs.com/png.latex?t "t");
-![C(i)](https://latex.codecogs.com/png.latex?C%28i%29 "C(i)") is the
-number of cases reported on day
-![i](https://latex.codecogs.com/png.latex?i "i"); and
-![p(i-t)](https://latex.codecogs.com/png.latex?p%28i-t%29 "p(i-t)") is
-the probability of entering the hospital
-![i-t](https://latex.codecogs.com/png.latex?i-t "i-t") days since the
-start of infection
-
-## New method
-
-From the perspective of an individual, we can simulate random infection
-onset times from the date of their case confirmation. We can do this in
-two parts:
-
-1.  Use the distribution of delays between symptom onset and case
-    confirmation for known cases to generate a distribution of
-    confirmation delays.
-2.  Assume some form of the incubation period to generate a distribution
-    of times between infection and symptom onset.
-
-For each confirmation date, we can simulate both parts of the delay to
-get a predicted infection onset time. We can then do this many times to
-get a distribution of infection onset times for each individual that
-takes into account uncertainty in the confirmation delay and incubation
-period distributions.
-
-## Data
-
-Data for the 41 confirmed cases pre- 01/01/2020 have already been
-deaggregated into symptom onset times, so take a look at
-these<sup>2</sup>.
-
-Here, I use all of the line list data compiled at<sup>3</sup>:
-\[<https://github.com/beoutbreakprepared/nCoV2019(https://github.com/beoutbreakprepared/nCoV2019>)
-
-I use only the data from China (outside and inside Hubei). I do not use
-data from other countries, as the reporting systems are likely very
-different.
-
-``` r
-print(head(other_dat_china1))
-```
-
-    ##    ID age country sex  city province latitude longitude date_confirmation
-    ## 5   1       China     Hefei    Anhui 31.82831  117.2248        2020-01-22
-    ## 6   2       China     Hefei    Anhui 31.82831  117.2248        2020-01-21
-    ## 7   3       China     Hefei    Anhui 31.82831  117.2248        2020-01-21
-    ## 8   4       China     Hefei    Anhui 31.82831  117.2248              <NA>
-    ## 9   5       China     Hefei    Anhui 31.82831  117.2248              <NA>
-    ## 10  6       China     Lu'an    Anhui 31.73450  116.5214              <NA>
-    ##    date_onset_symptoms date_admission_hospital hubei confirmation_delay
-    ## 5                 <NA>                    <NA>     0                 NA
-    ## 6                 <NA>                    <NA>     0                 NA
-    ## 7                 <NA>                    <NA>     0                 NA
-    ## 8                 <NA>                    <NA>     0                 NA
-    ## 9                 <NA>                    <NA>     0                 NA
-    ## 10                <NA>                    <NA>     0                 NA
-    ##    hospitalisation_delay
-    ## 5                     NA
-    ## 6                     NA
-    ## 7                     NA
-    ## 8                     NA
-    ## 9                     NA
-    ## 10                    NA
-
-## Parameters
-
-I assumed that the incubation period for 2019-nCoV has a mean of 10 days
-based on this tweet:
-<https://twitter.com/SunKaiyuan/status/1221477620501577732><sup>4</sup>.
-I assume a variance of 12.33 days based on estimates for
-SARS<sup>5</sup>.
-
-## Results
+Results
+-------
 
 ### Confirmation delay distribution
 
-First, I calculated the distribution of times between symptom onset and
-date of confirmation *where known*. I assumed that cases had a reporting
-delay of *at least* one day (so the couple of dcases with a delay less
-than this were set to 1 day) Then, I fit a geometric distribution
-through these data.
+First, I calculated the distribution of times between symptom onset and date of confirmation *where known*. I assumed that cases had a reporting delay of *at least* one day (so the couple of dcases with a delay less than this were set to 1 day) Then, I fit a geometric distribution through these data.
 
 ``` r
-p_other_confirm_fit
+p_confirm_delay_kudos
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-2-1.png)<!-- --> The red line
-shows the geometric distribution fit. Dashed vertical line indicates
-first day post symptoms that confirmation could occur.
+![](README_files/figure-markdown_github/unnamed-chunk-1-1.png) The red line shows the geometric distribution fit. Dashed vertical line indicates first day post symptoms that confirmation could occur.
+
+### Sliding window of confirmation times
+
+Note that this is NOT used in the augmentation step yet. To assess how the delay between symptom onset and confirmation has changed over time, we ran the following algorithm:
+
+1.  Start at the day of the first confirmed case. Go forward in time until at least 20 cases have been confirmed. use the confirmation delay distribution for all cases at or before this day as the first delay distribution.
+2.  Go forward in time by a day. Count the number of case confirmations on this day ![t](https://latex.codecogs.com/png.latex?t "t"). Set ![i=1](https://latex.codecogs.com/png.latex?i%3D1 "i=1").
+3.  Go back in time 1 day. Add the number of case confirmations for time ![t-i](https://latex.codecogs.com/png.latex?t-i "t-i").
+4.  If the total number of confirmed cases in this window is ![&gt;20](https://latex.codecogs.com/png.latex?%3E20 ">20"), set ![t=t+1](https://latex.codecogs.com/png.latex?t%3Dt%2B1 "t=t+1") and go to step 2. Otherwise, go to step 3 and set ![i](https://latex.codecogs.com/png.latex?i "i") to ![i-1](https://latex.codecogs.com/png.latex?i-1 "i-1").
+5.  End
+
+``` r
+source("code/generate_delay_distributions.R")
+p_sliding_delays
+```
+
+![](README_files/figure-markdown_github/unnamed-chunk-2-1.png)
 
 ### Hospitalisation delay distribution
 
-Not used for the augmentation step, but for prosperity here’s the
-hospitalisation delay distribution:
+Not used for the augmentation step, but for prosperity here's the hospitalisation delay distribution from the line list data available at: <https://github.com/beoutbreakprepared/nCoV2019/blob/master/ncov_hubei.csv><sup>4</sup>:
 
 ``` r
 p_other_hosp_fit
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+    ## Warning: Removed 5046 rows containing non-finite values (stat_bin).
+
+![](README_files/figure-markdown_github/unnamed-chunk-3-1.png)
 
 ### Incubation period distribution
 
-Next, I generated a gamma distribution for the incubation period based
-on a mean of 10 days and variance of 12.33 days matching previous
-estimates for SARS<sup>5</sup>.
+Next, I generated a Weibull distribution with uncertainty for the incubation period. This was done by rerunning Weibull distribution fit by Backer et al<sup>1</sup> .
 
 ``` r
 p_incubation
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](README_files/figure-markdown_github/unnamed-chunk-4-1.png)
 
-### Example augmented dataset
+### Generating augmented infection and symptom onset times
 
-For each confirmed case date, I simulated a delay from time of symptom
-onset from the first geometric distribution and subtracted this from the
-confirmation date. Then, for each time of symptom onset (if known or
-augmented), I simulated a delay for time since infection and subtracted
-this from the date of symptom onset.
-
-``` r
-p_data_augmented_example
-```
-
-    ## Warning: Removed 6 rows containing non-finite values (stat_bin).
-
-    ## Warning: Removed 16 rows containing missing values (geom_bar).
-
-![](README_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+First, we drew a random set of Weibull distribution parameters from the posterior distribution as described above. This forms the incubation period distribution for this sameple. Then for each case that is confirmed on a given day with no recorded symptom onset time, we generated a random symptom onset time by drawing a random value from the confirmation delay distribution and substracting it from the confirmation date. Then, for all confirmed cases, we generated a random infection times by drawing a random value from the incubation period and subtracting it from the symptom onset date.
 
 ### Bootstrapped incidence curves
 
-To propagate the randomness from these distributions and thereby reflect
-uncertainty in onset times, I repeated this process 1000 times to
-generate 95% quantiles on the incidence curves. Note that the infection
-incidence curve drops towards the end. This is because a large number of
-infections that occured in the past have not yet been included in the
-case confirmation counts.
+To propagate the randomness from these distributions and thereby reflect uncertainty in onset times, we repeated this process 1000 times to generate 95% quantiles on the incidence curves. Note that the infection incidence curve drops towards the end. This is because a large number of infections that occured in the past have not yet been included in the case confirmation counts. The dashed vertical lines show the percentage of infections that have occured before *today's date* that we *expect* to have observed by now. See methods below.
 
 ``` r
 results_panel_10day <- results_panel
 results_panel_10day
 ```
 
-    ## Warning: Removed 70 rows containing missing values (geom_path).
+    ## Warning: Removed 92 rows containing missing values (geom_path).
 
-![](README_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](README_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
-## Spatial variation
+Spatial variation
+-----------------
 
-Same analysis, but with augmented times stratified by province. Note
-that this reveals that the augmented times use both confirmed cases and
-those with reported symptom onsets, which is why the orange/blue lines
-can overtake the grey.
+Same analysis, but with augmented times stratified by province. Note that this reveals that the augmented times use both confirmed cases and those with reported symptom onsets, which is why the orange/blue lines can overtake the grey.
+
+``` r
+by_province_top6
+```
+
+    ## Warning: Removed 6 rows containing missing values (geom_bar).
+
+    ## Warning: Removed 92 rows containing missing values (geom_path).
+
+![](README_files/figure-markdown_github/unnamed-chunk-6-1.png)
 
 ``` r
 by_province
 ```
 
-    ## Warning: Removed 58 rows containing missing values (geom_path).
+    ## Warning: Removed 66 rows containing missing values (position_stack).
 
-![](README_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+    ## Warning: Removed 33 rows containing missing values (geom_bar).
 
-## Shorter incubation period
+    ## Warning: Removed 94 rows containing missing values (geom_path).
+
+![](README_files/figure-markdown_github/unnamed-chunk-7-1.png)
+
+Comments
+--------
+
+-   I have included 100 bootstrapped infection time and symptom onset time data sets in the git repo.
+-   Modifying case data in this way might be useful as sensitivity analyses for models using the case reports as incidence (which is problematic if done naively)
+-   We are hoping to extend these analyses quite a bit with sensitivity analyses and further visualisations.
+-   Justin Lessler pointed out that the Weibull distribution tends to truncate the incubation period tails. A next step will be to use their log-Normal distribution estimates [here](https://github.com/HopkinsIDD/ncov_incubation#data-summary) as a comparison, but given the amount of uncertainty I don't expect this to make much difference<sup>5</sup>.
+-   We are working on implementing nowcasting for the unobserved but (likely) existing cases.
+
+Acknowledgements
+----------------
+
+Thanks to Amy Dighe, Charlie Whittaker, Michael Mina, Bill Hanage and Justin Lessler for discussions and suggestions (so far).
+
+References
+----------
+
+1.  I think Kaiyuan Sun and colleages, "Kudos line list data" from <https://docs.google.com/spreadsheets/d/1jS24DjSPVWa4iuxuD4OAXrE3QeI8c9BC1hSlqr-NMiU/edit#gid=1187587451>
+2.  Backer et al. The incubation period of 2019-nCoV infections among travellers from Wuhan, China. medRxiv doi: <https://doi.org/10.1101/2020.01.27.20018986>
+3.  Wuhan Coronavirus (2019-nCoV) Global Cases (by Johns Hopkins CSSE) available at: <https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6>
+4.  <https://github.com/beoutbreakprepared/nCoV2019(https://github.com/beoutbreakprepared/nCoV2019>
+5.  Real-time estimation of the Wuhan coronavirus incubation time, *JHU et al.*, <https://github.com/HopkinsIDD/ncov_incubation#data-summary>
+6.  Höhle & an der Heiden Bayesan nowcasting during the STEC 0104:H4 outbreak in Germany, 2011;70(4):993-1002 <doi:https://doi.org/10.1111/biom.12194>
+7.  Bastos et al. A modelling approach for correcting delays in disease surveillance data, 2019;38(22):4363-4377 <doi:https://doi.org/10.1002/sim.8303>
+
+New method
+----------
+
+From the perspective of an individual, we can simulate random infection onset times from the date of their case confirmation. We can do this in two parts:
+
+1.  Use the distribution of delays between symptom onset and case confirmation for known cases to generate a distribution of confirmation delays.
+2.  Assume some form of the incubation period to generate a distribution of times between infection and symptom onset.
+
+For each confirmation date, we can simulate both parts of the delay to get a predicted infection onset time. We can then do this many times to get a distribution of infection onset times for each individual that takes into account uncertainty in the confirmation delay and incubation period distributions.
+
+Data and parameters
+-------------------
+
+I use two case report data sets and one incubation period data set.
+
+1.  Line list data compiled here: <https://docs.google.com/spreadsheets/d/1jS24DjSPVWa4iuxuD4OAXrE3QeI8c9BC1hSlqr-NMiU/edit#gid=1187587451><sup>1</sup>. This is used to infer the confirmation delay distribution and total confirmed cases on and before 21.01.2020.
+2.  Cumulative case counts stratified by province from here: <https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6><sup>3</sup>. These data went through a few cleaning steps: i) used only numbers from the *last* report for each day to get daily numbers; ii) find the change in number of cumulative reported confirmed cases for each day. Set this to 0 when case numbers went down.
+3.  Re-ran the model fitting procedure by Backer et al. in their medarxiv paper here: <https://www.medrxiv.org/content/10.1101/2020.01.27.20018986v1><sup>2</sup>. I then took random draws from posterior distribution of parameters for the fitted Weibull distribution. This allows uncertainty in the incubation period to be pushed through the model.
+
+Proportion of cases that should have been observed by now
+---------------------------------------------------------
+
+To be updated properly in the next few days, but essentially for each day, we ask the question "what proportion of infections that have happened to we expect to have observed by now". The code for this is in the script `code/unobserved_proportion.R`. Thanks to Charlie Whittaker from Imperial College London who suggested this idea from his experience working with colleage on the Ebola outbreak<sup>6,7</sup>.
 
 ``` r
-## Assumed parameters
-mean_incubation <- 5
-var_incubation <- 12.33
-latest_date <- as.Date("2020-01-27",origin="1970-01-01")
-
-source("code/analysis.R")
+plot(times, rev(cumsum(prop_seen)), type = "l", 
+     xlab = "Date",
+     ylab = "Proportion of Infections Occurring That Day \nThat Have Been Reported By the Current Day")
 ```
 
-    ## [1] "Number of given confirmation dates (ie. max we can augment): 784"
+![](README_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
-    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
-    
-    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
-    
-    ## Warning: Ignoring unknown parameters: binwidth, bins, pad
+Old method and logic
+--------------------
 
-``` r
-results_panel
-```
+The expected time of actual infection is given by:
 
-    ## Warning: Removed 56 rows containing missing values (geom_path).
+![\\text{expected day of infection} = \\text{day your case was confirmed} - \\text{expected delay from symptoms to confirmation} - \\text{expected incubation period}](https://latex.codecogs.com/png.latex?%5Ctext%7Bexpected%20day%20of%20infection%7D%20%3D%20%5Ctext%7Bday%20your%20case%20was%20confirmed%7D%20-%20%5Ctext%7Bexpected%20delay%20from%20symptoms%20to%20confirmation%7D%20-%20%5Ctext%7Bexpected%20incubation%20period%7D "\text{expected day of infection} = \text{day your case was confirmed} - \text{expected delay from symptoms to confirmation} - \text{expected incubation period}")
 
-![](README_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+The number of cases reported on a given day is therefore the sum of infections that occured on all preceding days multiplied by the probability that those cases entered the hospital (and were therefore reported) on that day of their infection.
 
-## Comments
+Another way of thinking about it is that the number of infections on a given day ![t](https://latex.codecogs.com/png.latex?t "t") is the sum of all cases that happened on all future days ![i](https://latex.codecogs.com/png.latex?i "i"), multipled by the probability of a case that started on day ![t](https://latex.codecogs.com/png.latex?t "t") entering healthcare ![i-t](https://latex.codecogs.com/png.latex?i-t "i-t") days after infection.
 
-  - I have included 100 bootstrapped infection time and symptom onset
-    time data sets in the git repo. These should match the line list
-    data, so can be merged.
-  - Modifying case data in this way might be useful as sensitivity
-    analyses for models using the case reports as incidence (which is
-    problematic if done naively)
-  - The reporting delay distribution has definitely changed over time.
-    Again, this could be a function of
-    ![t](https://latex.codecogs.com/png.latex?t "t") rather than a
-    single uniform distribution.
+![X(t) = \\sum\_{i=t}^{t+t\_{max}} C(i)\*p(i-t)](https://latex.codecogs.com/png.latex?X%28t%29%20%3D%20%5Csum_%7Bi%3Dt%7D%5E%7Bt%2Bt_%7Bmax%7D%7D%20C%28i%29%2Ap%28i-t%29 "X(t) = \sum_{i=t}^{t+t_{max}} C(i)*p(i-t)")
 
-## Acknowledgements
-
-Thanks Amy Dighe and Charlie Whittaker for checking that the logic here
-makes sense.
-
-## References
-
-1.  Liu et al. Transmission dynamics of 2019 novel coronavirus
-    (2019-nCoV). bioRxiv 2020
-    <doi:https://doi.org/10.1101/2020.01.25.919787>
-2.  Huang et al. Clinical features of patients infected with 2019 novel
-    coronavirus in Wuhan, China. Lancet 2020
-    <doi:https://doi.org/10.1016/S0140-6736(20)30183-5>
-3.  <https://github.com/beoutbreakprepared/nCoV2019(https://github.com/beoutbreakprepared/nCoV2019>
-4.  <https://twitter.com/SunKaiyuan/status/1221477620501577732>
-5.  Cai et al. Refined estimate of the incubation period of severe acute
-    respiratory syndrome and related influencing factors. Am J Epidemiol
-    2006;163(3):211-6 <doi:https://doi.org/10.1093/aje/kwj034>
+where ![X(t)](https://latex.codecogs.com/png.latex?X%28t%29 "X(t)") is the number of infections on day ![t](https://latex.codecogs.com/png.latex?t "t"); ![C(i)](https://latex.codecogs.com/png.latex?C%28i%29 "C(i)") is the number of cases reported on day ![i](https://latex.codecogs.com/png.latex?i "i"); and ![p(i-t)](https://latex.codecogs.com/png.latex?p%28i-t%29 "p(i-t)") is the probability of entering the hospital ![i-t](https://latex.codecogs.com/png.latex?i-t "i-t") days since the start of infection

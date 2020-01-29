@@ -64,3 +64,103 @@ get_map_shape <- function(local_file_dir="~/Documents/case_to_infection/data/map
   return(list(plot=p,data=china_map_pop,labels=label_dt))
 }
 
+
+
+
+###########################
+## PLOT STUFF ON A MAP
+###########################
+## Want to work with cumulative infections
+dat_cumu <- province_data  %>% group_by(date, var, province) %>% mutate(cumu_n=cumsum(n))
+dat_cumu_quantiles <- dat_cumu %>% group_by(date, var, province) %>% 
+  do(data.frame(t(quantile(.$cumu_n, probs = c(0.025,0.5,0.975),na.rm=TRUE)))) %>% ungroup()
+
+dat_cumu_mean <- province_data  %>% group_by(date, var, province) %>% 
+  mutate(cumu_n=cumsum(n)) %>% summarise(mean_n = mean(cumu_n))
+
+dat_cumu_quantiles$var <- variable_key2[dat_cumu_quantiles$var]
+dat_cumu_mean$var <- variable_key2[dat_cumu_mean$var]
+colnames(dat_cumu_quantiles) <- c("date","Variable","province","lower","median","upper")
+colnames(dat_cumu_mean) <- c("date","Variable","province","mean")
+
+total_confirmed_prov <- confirm_dat_province %>% group_by(province) %>% summarise(n=sum(n))
+total_confirmed_prov <- total_confirmed_prov[order(-total_confirmed_prov$n),]
+factor_order <- as.character(total_confirmed_prov$province)
+
+confirm_dat_province$province <- factor(as.character(confirm_dat_province$province), 
+                                        levels=factor_order)
+dat_cumu_quantiles$province <- factor(as.character(dat_cumu_quantiles$province), 
+                                      levels=factor_order)
+dat_cumu_mean$province <- factor(as.character(dat_cumu_mean$province), 
+                                 levels=factor_order)
+
+
+
+
+
+map_stuff <- get_map_shape()
+china_map_dat <- map_stuff$data
+label_dt <- map_stuff$labels
+
+## Do the provinces match up?
+in_map_prov <- unique(china_map_dat$province_EN)
+in_dat_prov <- as.character(unique(sim_data_quantiles_province$province))
+setdiff(in_map_prov, in_dat_prov)
+## Missing non-mainland territories and two are misnamed
+china_map_dat[china_map_dat$province_EN == "Tianjin City", "province_EN"] <- "Tianjin"
+china_map_dat[china_map_dat$province_EN == "Guangxi ", "province_EN"] <- "Guangxi"
+
+missing_provinces <- c("Taiwan", "Hong Kong","Tibet")
+colnames(china_map_dat)[2] <- "province"
+china_map_dat <- as_tibble(china_map_dat)
+china_map_dat <- china_map_dat %>%  mutate(province=ifelse(id==177,"Tibet",province))
+china_map_dat <- china_map_dat %>% mutate(province=ifelse(id== 538,"Taiwan",province))
+china_map_dat <- china_map_dat %>% mutate(province=ifelse(id== 538,"Hong Kong",province))
+## Hong Kong and Taiwan missing so will add as points
+
+in_map_prov <- unique(china_map_dat$province)
+in_dat_prov <- as.character(unique(dat_cumu_quantiles$province))
+setdiff(in_map_prov, in_dat_prov)
+
+china_map_dat$province <- factor(china_map_dat$province, levels=c(levels(dat_cumu_quantiles$province),"Tibet"))
+
+#dat_cumu_quantiles$province <- as.character(dat_cumu_quantiles$province)
+#dat_cumu_quantiles <- dat_cumu_quantiles %>% ungroup() %>% mutate(province=ifelse(is.na(province),"Tibet",province))
+#dat_cumu_quantiles$province <- factor(dat_cumu_quantiles$province, levels=c(levels(china_map_dat$province)))
+
+
+dat_cumu_mean$province <- as.character(dat_cumu_mean$province)
+dat_cumu_mean <- dat_cumu_mean %>% ungroup() %>% mutate(ifelse(is.na(province),"Tibet",province))
+dat_cumu_mean$province <- factor(dat_cumu_mean$province, levels=c(levels(china_map_dat$province)))
+
+#dat_cumu_quantiles_fill <- dat_cumu_quantiles %>% ungroup() %>% 
+#  select(date, Variable, province, median) %>%
+#  complete(date, Variable, province, fill=list(median=0,lower=0,upper=0))
+
+dat_cumu_mean_fill <- dat_cumu_mean %>% ungroup() %>% 
+  select(date, Variable, province, mean) %>%
+  complete(date, Variable, province, fill=list(mean=0))
+
+all_map_dat <- full_join(china_map_dat, dat_cumu_mean_fill, by="province")
+all_map_dat <- all_map_dat %>% drop_na()
+
+label_dt[label_dt$id == "898","province_EN"] <- "Hong Kong"
+
+dates <- unique(all_map_dat$date)
+dates <- dates[28:length(dates)]
+for(i in seq_along(dates)){
+  print(i)
+  p <- ggplot(all_map_dat[all_map_dat$date == dates[i],], aes(x = long, y = lat, group = group,fill=log10(mean))) +
+    geom_polygon()+
+    geom_path()+
+    scale_fill_gradient2(low="blue",high="red",na.value="blue",mid="orange",limits=c(0,5),midpoint=3,#midpoint=120,limits=c(0,170),
+                         guide = guide_colourbar(barwidth = 0.8, barheight = 10)) + 
+    geom_text(data = label_dt, aes(x=x, y=y, label = province_EN),inherit.aes = F, col="white") +
+    ggtitle(paste0("Date: ", dates[i])) +
+    theme_classic() + theme(panel.background = element_rect(fill="black"), legend.position=c(0.95,0.3)) + facet_wrap(~Variable,ncol=1)
+  #png(paste0("~/tmp/", i,"_infections.png"),height=10,width=15,res=300,units="in")
+  png(paste0("plots/",i,"_infections.png"),height=20,width=15,units="in",res=90)
+  plot(p)
+  dev.off()
+}
+

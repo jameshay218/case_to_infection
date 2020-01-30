@@ -13,7 +13,7 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 
-date_today <- "29.01.2020"
+date_today <- convert_date(Sys.Date())
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
@@ -37,6 +37,10 @@ repeats <- 1000
 source("code/pull_and_clean_linelist.R")
 source("code/pull_kudos_linelist.R")
 source("code/pull_arcgis_data.R")
+## Key data objects produce:
+## kudos_dat: the kudos line list data
+## combined_dat: the Mortiz Kraemer line list data
+## use_data_diff: the arcgis new confirmed case data
 
 ## The main thing returned from this is "combined_dat"
 ## Let's make combined_dat into confirmed case totals
@@ -289,7 +293,7 @@ write_csv(sim_data_symptoms1, path="augmented_data/augmented_symptom_times.csv")
 
 
 ## Create results panel plot programmatically
-element_text_size <- 10
+element_text_size <- 11
 text_size_theme <- theme(title=element_text(size=element_text_size), 
                          axis.text=element_text(size=element_text_size), 
                          axis.title = element_text(size=element_text_size))

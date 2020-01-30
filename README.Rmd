@@ -102,7 +102,7 @@ Thanks to Amy Dighe, Charlie Whittaker, Michael Mina, Bill Hanage and Justin Les
 1. I think Kaiyuan Sun and colleages, "Kudos line list data" from https://docs.google.com/spreadsheets/d/1jS24DjSPVWa4iuxuD4OAXrE3QeI8c9BC1hSlqr-NMiU/edit#gid=1187587451
 2. Backer et al. The incubation period of 2019-nCoV infections among travellers from Wuhan, China. medRxiv doi: https://doi.org/10.1101/2020.01.27.20018986 
 3. Wuhan Coronavirus (2019-nCoV) Global Cases (by Johns Hopkins CSSE) available at: https://gisanddata.maps.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6
-4. https://github.com/beoutbreakprepared/nCoV2019(https://github.com/beoutbreakprepared/nCoV2019
+4. https://github.com/beoutbreakprepared/nCoV2019
 5. Real-time estimation of the Wuhan coronavirus incubation time, *JHU et al.*, https://github.com/HopkinsIDD/ncov_incubation#data-summary
 6. Höhle & an der Heiden Bayesan nowcasting during the STEC 0104:H4 outbreak in Germany, 2011;70(4):993-1002 doi:https://doi.org/10.1111/biom.12194
 7. Bastos et al. A modelling approach for correcting delays in disease surveillance data, 2019;38(22):4363-4377 doi:https://doi.org/10.1002/sim.8303

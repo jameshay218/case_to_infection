@@ -265,7 +265,8 @@ threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
 thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=10000,ybreaks=1000,max_date = "30.01.2020", thresholds)
+sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date < date_today - 2)
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,max_date = "30.01.2020", thresholds)
 augmented_data_plot
 
 ## Distribution of times for each individual

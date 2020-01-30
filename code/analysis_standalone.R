@@ -13,11 +13,12 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 
-date_today <- as.Date(Sys.Date(), "%d-%m-%Y") # convert_date(Sys.Date())
+source("code/analysis_functions.R")
+
+date_today <- convert_date(Sys.Date())
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
-source("code/analysis_functions.R")
 ## source("code/plot_china_map.R")
 
 ## These column names will be kept as keys for the rest of the analysis
@@ -265,7 +266,7 @@ threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
 thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 
-sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date < date_today - 2)
+sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date < convert_date(Sys.Date()) - 2)
 augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,max_date = "30.01.2020", thresholds)
 augmented_data_plot
 

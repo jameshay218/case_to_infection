@@ -13,7 +13,7 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 
-date_today <- convert_date(Sys.Date())
+date_today <- as.Date(Sys.Date(), "%d-%m-%Y") # convert_date(Sys.Date())
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
@@ -215,6 +215,16 @@ sim_data_all$date <- as.Date(floor(sim_data_all$date), origin="1970-01-01")
 
 ## Sum by repeat, variable and date ie. events per day
 sim_data_sum <- sim_data_all %>% group_by(repeat_no, var, date) %>% tally()
+
+## Divide by proportion observed
+source("code/unobserved_proportion.R")
+
+sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
+  mutate(date_diff = as.numeric(date_today - date),
+         prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], 1),
+         n_inflated = floor(n/prop_observed)) %>%
+  select(-date_diff)
+
 sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0))
 
 variable_key2 <- c("date_confirmation"="Confirmation date (known)",
@@ -227,7 +237,7 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 ## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
+  do(data.frame(t(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
 
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
@@ -237,8 +247,6 @@ sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
 colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper")
 
-source("code/unobserved_proportion.R")
-
 tmp <- which(rev(cumsum(prop_seen)) > 0.99)
 tmp[length(tmp)]
 threshold_99 <- convert_date(date_today) + times[tmp[length(tmp)]]
@@ -247,11 +255,9 @@ tmp <- which(rev(cumsum(prop_seen)) > 0.8)
 tmp[length(tmp)]
 threshold_80 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
-
 tmp <- which(rev(cumsum(prop_seen)) > 0.5)
 tmp[length(tmp)]
 threshold_50 <- convert_date(date_today) + times[tmp[length(tmp)]]
-
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.2)
 tmp[length(tmp)]
@@ -259,7 +265,7 @@ threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
 thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = "30.01.2020", thresholds)
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=10000,ybreaks=1000,max_date = "30.01.2020", thresholds)
 augmented_data_plot
 
 ## Distribution of times for each individual

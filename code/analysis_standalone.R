@@ -318,6 +318,15 @@ sim_data_all <- as_tibble(sim_data_all)
 
 merged_data <- right_join(individual_key, sim_data_all,by=c("individual"))
 merged_data <- merged_data[!is.na(merged_data$date),]
+
+start_dates <- merged_data %>% group_by(var, province,repeat_no) %>% 
+  mutate(first_day=min(date)) %>% ungroup() %>% 
+  group_by(var, province) %>%
+  filter(var=="date_infection") 
+
+ggplot(start_dates) +
+  geom_histogram(aes(x=first_day)) + facet_wrap(~province,scales="free_y")
+
 #############################
 ## Aggregate by province
 ## Get confirmation time data
@@ -326,10 +335,26 @@ confirm_dat_province <- combined_dat_final %>% ungroup() %>% filter(!is.na(combi
   ungroup() %>% complete(province, date_confirmation, fill=list(n=0))
 confirm_dat_province$Variable <- "Confirmed cases of infections that have been observed"
 
+## for each province, variable and sample,
+## Find the first date of an infection
+## Then, get the average across all repeats
+## Shift all dates so that this date is day 0
+merged_data <- merged_data %>% 
+  group_by(province, var, repeat_no) %>% 
+  mutate(date = ifelse(date < convert_date("01.11.2019"),convert_date("01.11.2019"),date)) %>%
+  mutate(start_day=min(date)) %>% ungroup() %>%
+  group_by(province, var,repeat_no) %>%
+  mutate(d_diff_mean=as.numeric(date - start_day))
+
 province_data <- merged_data %>% 
   group_by(repeat_no, var, date, province) %>%
   tally() %>% ungroup() %>%
   complete(repeat_no, var, date, province, fill=list(n=0))
+
+province_data1 <- merged_data %>% 
+  group_by(repeat_no, var, d_diff_mean, province) %>%
+  tally() %>% ungroup() %>% group_by(province) %>%
+  complete(repeat_no, var, d_diff_mean, province, fill=list(n=0))
 
 
 sim_data_quantiles_province <- province_data %>% group_by(date, var, province) %>% 

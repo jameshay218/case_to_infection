@@ -127,6 +127,7 @@ plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax
 
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
+                                min_date="01.12.2019",
                                 ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700){
   threshold_dat <- data.frame(xmin=c(convert_date("01.12.2019"), thresholds),
                               xmax=c(thresholds, convert_date(max_date)),
@@ -144,8 +145,9 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
     geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
     geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
-    geom_line(aes(x=date, y=median,col=Variable),size=1) +
-    scale_y_continuous(limits=c(0,ymax),expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
+    geom_line(aes(x=date, y=mean,col=Variable),size=1) +
+    scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
+    coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
                  breaks="5 day") + 
     scale_fill_manual(values=c("blue","grey40","orange")) + 

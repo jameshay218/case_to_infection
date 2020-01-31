@@ -14,7 +14,6 @@ library(data.table)
 library(googlesheets4)
 source("code/analysis_functions.R")
 
-source("code/analysis_functions.R")
 
 date_today <- convert_date(Sys.Date())
 
@@ -30,7 +29,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 1000
+repeats <- 2000
 
 ## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data
@@ -217,17 +216,19 @@ sim_data_all$date <- as.Date(floor(sim_data_all$date), origin="1970-01-01")
 
 ## Sum by repeat, variable and date ie. events per day
 sim_data_sum <- sim_data_all %>% group_by(repeat_no, var, date) %>% tally()
+sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
+  mutate(date_diff = as.numeric(date_today - date))
 
 ## Divide by proportion observed
 source("code/unobserved_proportion.R")
 
 sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
-  mutate(date_diff = as.numeric(date_today - date),
-         prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], 1),
-         n_inflated = floor(n/prop_observed)) %>%
-  select(-date_diff)
-
-sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0))
+  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff]),
+         n_inflated=floor(n/prop_observed))# %>%
+  #select(-date_diff)
+sim_data_sum$n_inflated <- rnbinom(nrow(sim_data_sum), sim_data_sum$n, sim_data_sum$prop_observed) + sim_data_sum$n
+#sim_data_sum <- sim_data_sum %>% mutate(n_inflated = ifelse(var=="date_infection",n_inflated, n))
+sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0,n_inflated=0,prop_observed=0))
 
 variable_key2 <- c("date_confirmation"="Confirmation date (known)",
                    "date_onset_symptoms"="Onset of symptoms for cases observed to date",
@@ -239,7 +240,8 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 ## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
+  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
+
 
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
@@ -247,7 +249,7 @@ confirm_data$Variable <- "Confirmed cases of infections that have been observed"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
-colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper")
+colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean")
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.99)
 tmp[length(tmp)]
@@ -270,8 +272,9 @@ thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 
 #augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
 
-sim_data_quantiles_truncated <- sim_data_quantiles #%>% filter(date < convert_date(Sys.Date()) - 2)
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,max_date = "30.01.2020", thresholds)
+sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date <= convert_date(Sys.Date()))
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,
+                                           max_date = date_today, min_date="01.01.2020", thresholds=NULL)
 augmented_data_plot
 
 ## Distribution of times for each individual
@@ -358,14 +361,25 @@ confirm_dat_province$Variable <- "Confirmed cases of infections that have been o
 #  group_by(province, var,repeat_no) %>%
 #  mutate(d_diff_mean=as.numeric(date - start_day))
 
+
+
 province_data <- merged_data %>% 
   group_by(repeat_no, var, date, province) %>%
-  tally() %>% ungroup() %>%
-  complete(repeat_no, var, date, province, fill=list(n=0))
+  tally() 
+
+province_data <- province_data %>% group_by(repeat_no, var, province) %>%
+  mutate(date_diff = as.numeric(date_today - date))
+province_data <- province_data %>% group_by(repeat_no, var, province) %>%
+  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff]),
+         n_inflated=floor(n/prop_observed))# %>%
+#select(-date_diff)
+province_data$n_inflated <- rnbinom(nrow(province_data), province_data$n, province_data$prop_observed) + province_data$n
+#sim_data_sum <- sim_data_sum %>% mutate(n_inflated = ifelse(var=="date_infection",n_inflated, n))
+province_data <- province_data %>% ungroup() %>% complete(repeat_no, var, date, province, fill=list(n=0,n_inflated=0,prop_observed=0))
 
 
 sim_data_quantiles_province <- province_data %>% group_by(date, var, province) %>% 
-  do(data.frame(t(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
+  do(data.frame(t(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
 
 sim_data_quantiles_province$var <- variable_key2[sim_data_quantiles_province$var]
 colnames(sim_data_quantiles_province) <- c("date","Variable","province","lower","median","upper")

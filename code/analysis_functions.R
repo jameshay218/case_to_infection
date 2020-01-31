@@ -127,8 +127,10 @@ plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax
 
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
-                                min_date="01.12.2019",
-                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700){
+                                min_date="01.12.2019", cols = c("grey40","blue","skyblue","orange","red"),
+                                cols2 = c("blue","skyblue","orange","red"),
+                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700,
+                                title = "Augmented and observed timings of infection and symptom onset in China"){
   threshold_dat <- data.frame(xmin=c(convert_date("01.12.2019"), thresholds),
                               xmax=c(thresholds, convert_date(max_date)),
                               fills=c(">99%",">80%",">50%",">20%","<20%"))
@@ -150,9 +152,9 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
                  breaks="5 day") + 
-    scale_fill_manual(values=c("grey40","blue","skyblue","red","orange")) + 
-    scale_color_manual(values=c("blue","skyblue","red","orange"),guide="none") +
-    ggtitle("Augmented and observed timings of infection and symptom onset in China") +
+    scale_fill_manual(values= cols) + 
+    scale_color_manual(values=cols2,guide="none") +
+    ggtitle(title) +
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +
     theme(axis.text.x=element_text(angle=45,hjust=1),
@@ -160,6 +162,7 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
           legend.position = c(0.25,0.75)) 
   p
 }
+
 
 plot_augmented_data_province <- function(data_quantiles_province, confirmed_data_province, max_date="27.01.2020"){
   p <- ggplot(data_quantiles_province) +

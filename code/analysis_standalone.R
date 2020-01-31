@@ -230,11 +230,11 @@ sim_data_sum$n_inflated <- rnbinom(nrow(sim_data_sum), sim_data_sum$n, sim_data_
 sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0,n_inflated=0,prop_observed=0))
 
 variable_key2 <- c("date_confirmation"="Confirmation date (known)",
-                   "date_onset_symptoms"="Date of symptom onset for observed cases (estimated from date of confirmation) ",
-                   "date_onset_symptoms_inflated"="Inflated onset of symptoms for cases observed to date",
+                   "date_onset_symptoms"="Number of observed cases with symptom onset (estimated from date of confirmation)",
+                   "date_onset_symptoms_inflated"="Number of observed and not yet observed cases with symptom onset (estimated)",
                    "date_admission_hospital"="Hospital admission date",
-                   "date_infection"="Date of infection for observed cases (estimated)",
-                   "date_infection_inflated" = "Date of infection for observed cases and those not yet observed (estimated) ")
+                   "date_infection"="Number of infections for observed cases (estimated)",
+                   "date_infection_inflated" = "Number of infections for observed cases and those not yet observed (estimated) ")
 
 ################################################
 ## OVERALL PLOT
@@ -251,7 +251,7 @@ sim_data_quantiles_inflated$var <- c("date_infection" = "date_infection_inflated
 sim_data_quantiles <- bind_rows(sim_data_quantiles, sim_data_quantiles_inflated) %>% arrange(date)
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
-confirm_data$Variable <- "Date of confirmation for observed cases (observed)"
+confirm_data$Variable <- "Number of confirmations for observed cases (observed)"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
@@ -283,6 +283,23 @@ augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm
                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL)
 augmented_data_plot
 
+onset_only <- sim_data_quantiles_truncated %>% 
+                filter(Variable %in% c("Number of observed cases with symptom onset (estimated from date of confirmation)",
+                                  "Number of observed and not yet observed cases with symptom onset (estimated)"))
+augmented_plot_onset <- plot_augmented_data(onset_only, confirm_data,ymax=5000,ybreaks=500,
+                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL,
+                                            cols = c("grey40","orange","red"), cols2 = c("orange","red"),
+                                            title = "Augmented and observed timings of symptom onset in China")
+augmented_plot_onset
+infection_only <- sim_data_quantiles_truncated %>% 
+  filter(Variable %in% c("Number of infections for observed cases (estimated)",
+                         "Number of infections for observed cases and those not yet observed (estimated) "))
+augmented_plot_infection <- plot_augmented_data(infection_only, confirm_data,ymax=5000,ybreaks=500,
+                                                max_date = date_today, min_date="01.01.2020", thresholds=NULL,
+                                                cols = c("grey40","blue","skyblue"), cols2 = c("blue","skyblue"),
+                                                title = "Augmented and observed timings of infection in China")
+augmented_plot_infection
+#plot_grid(augmented_plot_onset, augmented_plot_infection)
 ## Distribution of times for each individual
 
 sim_data_quantiles_indiv <- sim_data_all %>% group_by(individual, var) %>% 

@@ -223,34 +223,39 @@ sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
 source("code/unobserved_proportion.R")
 
 sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
-  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff]),
-         n_inflated=floor(n/prop_observed))# %>%
+  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff])) #%>%
   #select(-date_diff)
 sim_data_sum$n_inflated <- rnbinom(nrow(sim_data_sum), sim_data_sum$n, sim_data_sum$prop_observed) + sim_data_sum$n
 #sim_data_sum <- sim_data_sum %>% mutate(n_inflated = ifelse(var=="date_infection",n_inflated, n))
 sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0,n_inflated=0,prop_observed=0))
 
 variable_key2 <- c("date_confirmation"="Confirmation date (known)",
-                   "date_onset_symptoms"="Onset of symptoms for cases observed to date",
+                   "date_onset_symptoms"="Date of symptom onset for observed cases (estimated from date of confirmation) ",
+                   "date_onset_symptoms_inflated"="Inflated onset of symptoms for cases observed to date",
                    "date_admission_hospital"="Hospital admission date",
-                   "date_infection"="Augmented infection date for cases observed to date")
-
+                   "date_infection"="Date of infection for observed cases (estimated)",
+                   "date_infection_inflated" = "Date of infection for observed cases and those not yet observed (estimated) ")
 
 ################################################
 ## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n),
-                    quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
+  do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n)))))
 
+sim_data_quantiles_inflated <- sim_data_sum %>% group_by(date, var) %>% 
+  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
+
+sim_data_quantiles_inflated$var <- c("date_infection" = "date_infection_inflated",
+                                     "date_onset_symptoms" = "date_onset_symptoms_inflated")[sim_data_quantiles$var]
+
+sim_data_quantiles <- bind_rows(sim_data_quantiles, sim_data_quantiles_inflated) %>% arrange(date)
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
-confirm_data$Variable <- "Confirmed cases of infections that have been observed"
+confirm_data$Variable <- "Date of confirmation for observed cases (observed)"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
-colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean",
-                                  "lower_inflated","median_inflated","upper_inflated","mean_inflated")
+colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean")
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.99)
 tmp[length(tmp)]

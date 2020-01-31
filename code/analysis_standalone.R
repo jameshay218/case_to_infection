@@ -240,8 +240,8 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 ## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
-
+  do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n),
+                    quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
 
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
@@ -249,7 +249,8 @@ confirm_data$Variable <- "Confirmed cases of infections that have been observed"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
-colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean")
+colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean",
+                                  "lower_inflated","median_inflated","upper_inflated","mean_inflated")
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.99)
 tmp[length(tmp)]

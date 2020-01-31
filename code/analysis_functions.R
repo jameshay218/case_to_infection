@@ -150,8 +150,8 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
                  breaks="5 day") + 
-    scale_fill_manual(values=c("blue","grey40","orange")) + 
-    scale_color_manual(values=c("blue","orange"),guide="none") +
+    scale_fill_manual(values=c("grey40","blue","skyblue","red","orange")) + 
+    scale_color_manual(values=c("blue","skyblue","red","orange"),guide="none") +
     ggtitle("Augmented and observed timings of infection and symptom onset in China") +
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +

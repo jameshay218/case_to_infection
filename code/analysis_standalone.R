@@ -1,5 +1,5 @@
-setwd("~/Documents/case_to_infection/")
-#setwd("GitHub/case_to_infection/")
+#setwd("~/Documents/case_to_infection/")
+setwd("~/GitHub/case_to_infection/")
 
 library(ggplot2)
 library(tidyverse)
@@ -12,12 +12,12 @@ library(maptools)
 library(maps)
 library(data.table)
 library(googlesheets4)
+source("code/analysis_functions.R")
 
 date_today <- convert_date(Sys.Date())
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
-source("code/analysis_functions.R")
 ## source("code/plot_china_map.R")
 
 ## These column names will be kept as keys for the rest of the analysis
@@ -259,7 +259,7 @@ threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
 thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = "30.01.2020", thresholds)
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
 augmented_data_plot
 
 ## Distribution of times for each individual
@@ -339,22 +339,17 @@ confirm_dat_province$Variable <- "Confirmed cases of infections that have been o
 ## Find the first date of an infection
 ## Then, get the average across all repeats
 ## Shift all dates so that this date is day 0
-merged_data <- merged_data %>% 
-  group_by(province, var, repeat_no) %>% 
-  mutate(date = ifelse(date < convert_date("01.11.2019"),convert_date("01.11.2019"),date)) %>%
-  mutate(start_day=min(date)) %>% ungroup() %>%
-  group_by(province, var,repeat_no) %>%
-  mutate(d_diff_mean=as.numeric(date - start_day))
+#merged_data <- merged_data %>% 
+#  group_by(province, var, repeat_no) %>% 
+#  mutate(date = ifelse(date < convert_date("01.11.2019"),convert_date("01.11.2019"),date)) %>%
+#  mutate(start_day=min(date)) %>% ungroup() %>%
+#  group_by(province, var,repeat_no) %>%
+#  mutate(d_diff_mean=as.numeric(date - start_day))
 
 province_data <- merged_data %>% 
   group_by(repeat_no, var, date, province) %>%
   tally() %>% ungroup() %>%
   complete(repeat_no, var, date, province, fill=list(n=0))
-
-province_data1 <- merged_data %>% 
-  group_by(repeat_no, var, d_diff_mean, province) %>%
-  tally() %>% ungroup() %>% group_by(province) %>%
-  complete(repeat_no, var, d_diff_mean, province, fill=list(n=0))
 
 
 sim_data_quantiles_province <- province_data %>% group_by(date, var, province) %>% 
@@ -383,3 +378,4 @@ by_province_top6
 p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
 p_start_delay_dist
 
+source("code/shifting_curves.R")

@@ -2,6 +2,9 @@
 confounding_dates <- c("none", "10.01.2020 - 22.01.2020", "pre 18.01.2020", "early january","",
   "11.26.2020", "18.01.2020 - 23.01.2020", "not sure")
 
+blue_color <- "#0072B2"
+orange_color <- "#D55E00"
+
 #' Checks the given vector of dates as strings and converts to NA if not useable
 clean_dates <- function(dates){
   dates_new <- dates
@@ -143,7 +146,7 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
     geom_line(aes(x=date, y=median,col=Variable),size=1) +
     scale_y_continuous(limits=c(0,ymax),expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
-    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)),
+    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
                  breaks="5 day") + 
     scale_fill_manual(values=c("blue","grey40","orange")) + 
     scale_color_manual(values=c("blue","orange"),guide="none") +

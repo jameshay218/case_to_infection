@@ -206,3 +206,23 @@ merge_data <- function(linelist_dat, arcgis_dat, switch_date){
   final <- bind_rows(arcgis_dat, subset_combined_dat) %>% arrange(province, date_confirmation)
   final
 }
+
+#' fit geometric distribution using Stan
+fit_geometric_stan <- function(delay_data, model) {
+  
+  # define data and constants
+  data_list <- list(  
+    N= length(delay_data),    # number of sampling times
+    delay = delay_data)
+  
+  # fit the model to data
+  chains <- 3 # number of NUTS chains to run in parallel
+  set.seed(1) # set random number generator seed for reproducibility
+  # fit model to data using No U-Turn sampler
+  if(missing(model)) {
+    fit <- stan(get_model_filename("geometric.stan"), data=data_list,  chains=3,verbose = TRUE)
+  } else {
+    fit <- sampling(model, data=data_list,  chains=3,verbose = TRUE)
+  }
+  fit
+}

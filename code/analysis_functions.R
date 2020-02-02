@@ -226,3 +226,41 @@ fit_geometric_stan <- function(delay_data, model) {
   }
   fit
 }
+
+#' simulate confirmation times
+simulate_confirmation_times <- function(date_onset_symptoms, p_confirm_delay){
+  # start from symptom onset time for now
+  
+  ## From the provided geometric distribution + 1
+  sim_confirmation_delays <- rgeom(length(date_onset_symptoms), p_confirm_delay) + 1
+  date_confirmation <- date_onset_symptoms + floor(sim_confirmation_delays)
+
+  return(date_confirmation)
+}
+
+plot_forward_simulation <- function(data_quantiles, onset_data, max_date="27.01.2020",
+                                min_date="01.12.2019", cols = c("grey40"),
+                                cols2 = c("grey40"),
+                                ymax=500,ybreaks=25, 
+                                title = "Forward simulation of confirmed cases from symptom onsets"){
+  
+  p <- ggplot(data_quantiles)
+  p <- p +
+    #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
+    geom_bar(data=onset_data,aes(x=date_onset_symptoms,y=n),fill = "orange", stat="identity") +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower),alpha=0.25, fill = "grey40") +
+    geom_line(aes(x=date, y=mean),size=1, col = "grey40") +
+    scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
+    coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
+    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
+                 breaks="5 day") + 
+    scale_fill_manual(values= cols) + 
+    scale_color_manual(values=cols2,guide="none") +
+    ggtitle(title) +
+    ylab("Count") + xlab("Date of event") +
+    theme_pubr() +
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          panel.grid.major = element_line(colour="grey70"),
+          legend.position = c(0.25,0.75)) 
+  p
+}

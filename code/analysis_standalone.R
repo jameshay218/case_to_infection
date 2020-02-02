@@ -273,7 +273,7 @@ thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 #augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
 
 sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date <= convert_date(Sys.Date()))
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=10000,ybreaks=500,
                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL)
 augmented_data_plot
 

@@ -16,6 +16,8 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 library(extraDistr)
+
+## Some setup for STAN
 if(refit_p_confirm_delay && bayesian_p_confirm_delay) {
   library(rstan)
   options(mc.cores = parallel::detectCores())
@@ -165,7 +167,6 @@ if(bayesian_p_confirm_delay) {
 }
 
 p_confirm_delay_kudos
->>>>>>> bc58d52dc70cbea06ed0ab0bd01fba1aa1db27a7
 
 ####################################
 ## SYMPTOM ONSET DISTRIBUTION
@@ -273,6 +274,9 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
   do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n)))))
+
+sim_data_quantiles_inflated <- sim_data_sum %>% group_by(date, var) %>% 
+  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
 
 sim_data_quantiles_inflated$var <- c("date_infection" = "date_infection_inflated",
                                      "date_onset_symptoms" = "date_onset_symptoms_inflated")[sim_data_quantiles$var]

@@ -1,5 +1,4 @@
 ## Note this is called as part of "code/analysis_standalone.R"
-
 save_my_plots <- TRUE
 
 ## Pulls up to date line list data from google sheets
@@ -102,6 +101,7 @@ other_dat$date_onset_symptoms <- convert_date(other_dat$date_onset_symptoms)
 other_dat$date_admission_hospital <- convert_date(other_dat$date_admission_hospital)
 other_dat$date_confirmation <- convert_date(other_dat$date_confirmation)
 other_dat$hubei <- 0
+
 
 combined_dat <- rbind(other_dat, hubei_dat)
 combined_dat$hubei <- as.factor(combined_dat$hubei)
@@ -239,7 +239,6 @@ p_hosp_delay_distribution <- ggplot(combined_dat) +
 png("plots/linelist_hosp_delay_dist.png",width=10,height=7,res=300,units="in")
 p_hosp_delay_distribution
 dev.off()
-
 
 
 

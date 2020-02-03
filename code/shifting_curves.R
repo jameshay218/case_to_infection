@@ -1,12 +1,13 @@
+cases_needed <- 5
 ## Get median start date for hubei
-min_date_overall <- province_data %>% filter(n > 0) %>% 
+min_date_overall <- province_data %>% filter(n > cases_needed) %>% 
   filter(province=="Hubei") %>% group_by(repeat_no) %>% 
   summarise(start_hubei=min(date)) %>% ungroup() %>% summarise(y=median(start_hubei)) %>% pull(y)
 
 ## Get median start dates for all provinces
 ## Get how much you need to shift this to give the 
 ## same value as for Hubei
-min_dates <- province_data %>% filter(n > 0) %>% group_by(province,repeat_no) %>% 
+min_dates <- province_data %>% filter(n > cases_needed) %>% group_by(province,repeat_no) %>% 
   summarise(min_prov=min(date)) %>% ungroup() %>% group_by(province) %>% summarise(start_prov=median(min_prov))
 min_dates$hubei_start <- min_date_overall
 
@@ -17,7 +18,7 @@ min_dates <- min_dates %>%
 ## confirmation days to give the same median
 ## as Hubei
 province_data1 <- province_data %>% left_join(min_dates)
-province_data1 <- province_data1 %>% filter(n > 0) 
+province_data1 <- province_data1 %>% filter(n > cases_needed) 
 province_data1 <- province_data1 %>% filter(var=="date_infection") %>% mutate(x=as.numeric(date +shift_needed))
 #province_data1$x <- convert_date(province_data1$x-province_data1$hubei_start) 
 
@@ -52,7 +53,7 @@ p_comparison <- ggplot(max_help) +
   geom_ribbon(aes(x=date, ymin=lower_h,ymax=upper_h),alpha=0.5,fill=orange_color) +
   geom_ribbon(aes(x=date,ymin=lower,ymax=upper),alpha=0.5,fill=blue_color) +
   geom_line(aes(x=date,y=median),col=blue_color,size=0.75) + 
-  coord_cartesian(xlim=c(80,170)) +
+  #coord_cartesian(xlim=c(80,170)) +
   ylab("log10 infection incidence") +
   xlab("Days since median epidemic start day for that province") +
   theme_bw() +
@@ -61,7 +62,7 @@ p_comparison <- ggplot(max_help) +
   facet_wrap(~province, scales="free_y", ncol=5)
 p_comparison
 
-png("plots/comparison_plot.png",height=10,width=10,units="in",res=300)
+png("plots/comparison_plot_5day.png",height=10,width=10,units="in",res=300)
 plot(p_comparison)
 dev.off()
 

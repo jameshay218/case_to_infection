@@ -12,6 +12,7 @@ library(maptools)
 library(maps)
 library(data.table)
 library(googlesheets4)
+library(extraDistr)
 source("code/analysis_functions.R")
 
 
@@ -74,75 +75,11 @@ p_confirm_pre_arcgis
 ####################################
 ## Using linelist data for dates at and before 21.01.2020,
 ## arcgis data otherwise
+use_data_diff$country <- use_data_diff$country_region
 combined_dat_final <- merge_data(combined_dat, use_data_diff, switch_date="21.01.2020")
 combined_dat_final$ID <- 1:nrow(combined_dat_final)
 
-
-####################################
-## OLD LINE LIST CONFIRMATION DELAY DISTRIBUTION
-####################################
-china_dat <- combined_dat[combined_dat$country == "China",]
-## Any instant confirmations?
-china_dat %>% filter(confirmation_delay < 1)
-## Assume that there is at least a 1 day delay to reporting, so < 1 day is set to 1
-china_dat <- china_dat %>% mutate(confirmation_delay = ifelse(confirmation_delay < 1, 1, confirmation_delay))
-use_delays <- china_dat %>% select(confirmation_delay) %>% drop_na() %>% pull(confirmation_delay)
-## Fit a geometric distribution to the confirmation delay distribution
-fit1 <- optim(c(0.1), fit_geometric, dat=use_delays-1,method="Brent",lower=0,upper=1)
-fit_line1 <- dgeom(seq(0,25,by=1),prob=fit1$par)
-fit_line_dat1 <- data.frame(x=seq(1,26,by=1),y=fit_line1)
-
-p_other_confirm_fit<- ggplot(china_dat) + 
-  geom_histogram(aes(x=confirmation_delay,y=..density..),binwidth=1,col="black") +
-  geom_line(data=fit_line_dat1, aes(x=x,y=y), col="red",size=1) +
-  scale_x_continuous(breaks=seq(0,30,by=5),labels=seq(0,30,by=5)) +
-  scale_y_continuous(expand=c(0,0),limits=c(0,0.2)) +
-  geom_vline(xintercept=1,linetype="dashed") +
-  ylab("Probability density") + xlab("Days since symptom onset") +
-  ggtitle("Distribution of delays between symptom\n onset and confirmation") +
-  theme_pubr()
-p_other_confirm_fit
-
-####################################
-## OLD LINE LIST HOSPITALISATION DELAY DISTRIBUTION
-####################################
-## Assume that there is at least a 1 day delay to reporting, so < 1 day is set to 1
-use_delays <- china_dat %>% select(hospitalisation_delay) %>% drop_na() %>% pull(hospitalisation_delay)
-## Fit a geometric distribution to hospitalisation delay distribution
-fit2 <- optim(c(0.1), fit_geometric, dat=use_delays,method="Brent",lower=0,upper=1)
-times <- seq(0,25,by=1)
-fit_line2 <- dgeom(times,prob=fit2$par)
-fit_line_dat2 <- data.frame(x=times,y=fit_line2)
-
-p_other_hosp_fit<- ggplot(china_dat) + 
-  geom_histogram(aes(x=hospitalisation_delay,y=..density..),binwidth=1) +
-  geom_line(data=fit_line_dat2, aes(x=x,y=y), col="red") +
-  scale_x_continuous(breaks=seq(0,25,by=1)) +
-  ggtitle("Distribution of delays between symptom\n onset and hospitalisation (not great fit)") +
-  theme_pubr()
-p_other_hosp_fit
-## Fit isn't great for first day
-
-####################################
-## KUDOS LINE LIST CONFIRMATION DELAY
-####################################
-## Fit a geometric distribution to the confirmation delay distribution
-use_delays_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>% pull(delay)
-fit_kudos <- optim(c(0.1), fit_geometric, dat=use_delays_kudos-1,method="Brent",lower=0,upper=1)
-fit_kudos_line <- dgeom(seq(0,max(kudos_dat$delay,na.rm=TRUE),by=1),prob=fit_kudos$par)
-fit_line_kudos_dat <- data.frame(x=seq(1,max(kudos_dat$delay,na.rm=TRUE)+1,by=1),y=fit_kudos_line)
-
-p_confirm_delay_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>%
-  ggplot() + 
-  geom_histogram(aes(x=delay,y=..density..),binwidth=1,col="black") +
-  geom_line(data=fit_line_kudos_dat, aes(x=x,y=y), col="red",size=1) +
-  scale_x_continuous(breaks=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5),labels=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5)) +
-  scale_y_continuous(expand=c(0,0),limits=c(0,0.15)) +
-  geom_vline(xintercept=1,linetype="dashed") +
-  ylab("Probability density") + xlab("Days since symptom onset") +
-  ggtitle("Distribution of delays between symptom onset\n and confirmation, Kudos line list data") +
-  theme_pubr()
-p_confirm_delay_kudos
+source("code/fit_delay_distributions.R")
 
 ####################################
 ## SYMPTOM ONSET DISTRIBUTION
@@ -196,7 +133,9 @@ for(i in seq_len(repeats)){
   tmp <- augment_infection_times(combined_dat_final, 
                                  inc_period_alpha=alpha, 
                                  inc_period_sigma=sigma, 
-                                 p_confirm_delay=fit_kudos$par)
+                                 fit_kudos_gamma$par[1],
+                                 fit_kudos_gamma$par[2])
+                                 #p_confirm_delay=fit_kudos$par)
   
   sim_data_infections[i,] <- tmp$augmented_infection_times
   sim_data_symptoms[i,] <- tmp$augmented_symptom_onsets
@@ -240,7 +179,7 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 ## OVERALL PLOT
 ## Distribution of times for each date
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
+  do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n)))))
 
 
 ## Get confirmation time data
@@ -251,7 +190,7 @@ sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
 colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","mean")
 
-tmp <- which(rev(cumsum(prop_seen)) > 0.99)
+tmp <- which(rev(cumsum(prop_seen)) > 0.95)
 tmp[length(tmp)]
 threshold_99 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
@@ -273,8 +212,8 @@ thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 #augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
 
 sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date <= convert_date(Sys.Date()))
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=10000,ybreaks=500,
-                                           max_date = date_today, min_date="01.01.2020", thresholds=NULL)
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=6000,ybreaks=500,
+                                           max_date = date_today, min_date="01.01.2020", thresholds=thresholds)
 augmented_data_plot
 
 ## Distribution of times for each individual
@@ -397,7 +336,8 @@ by_province <- plot_augmented_data_province(sim_data_quantiles_province, confirm
 top_6 <- factor_order[1:6]
 by_province_top6 <- plot_augmented_data_province(sim_data_quantiles_province[sim_data_quantiles_province$province %in% top_6,], 
                                                  confirm_dat_province[confirm_dat_province$province %in% top_6,], max_date=date_today)
-by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + theme(legend.text=element_text(size=10))
+by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + 
+  theme(legend.text=element_text(size=10))
 by_province_top6
 
 ## Plot time from start

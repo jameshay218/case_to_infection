@@ -267,7 +267,7 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
                    "date_onset_symptoms_inflated"="Number of observed and not yet observed cases with symptom onset (estimated)",
                    "date_admission_hospital"="Hospital admission date",
                    "date_infection"="Number of infections for observed cases (estimated)",
-                   "date_infection_inflated" = "Number of infections for observed cases and those not yet observed (estimated) ")
+                   "date_infection_inflated" = "Number of infections for observed cases and those not yet observed (estimated)")
 
 ################################################
 ## OVERALL PLOT
@@ -292,7 +292,7 @@ colnames(sim_data_quantiles) <- c("date","Variable","lower","median","upper","me
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.95)
 tmp[length(tmp)]
-threshold_99 <- convert_date(date_today) + times[tmp[length(tmp)]]
+threshold_95 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
 tmp <- which(rev(cumsum(prop_seen)) > 0.8)
 tmp[length(tmp)]
@@ -306,7 +306,7 @@ tmp <- which(rev(cumsum(prop_seen)) > 0.2)
 tmp[length(tmp)]
 threshold_20 <- convert_date(date_today) + times[tmp[length(tmp)]]
 
-thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
+thresholds <- c(threshold_95, threshold_80, threshold_50, threshold_20)
 
 
 #augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
@@ -326,9 +326,11 @@ augmented_plot_onset <- plot_augmented_data(onset_only, confirm_data,ymax=5000,y
 augmented_plot_onset
 infection_only <- sim_data_quantiles_truncated %>% 
   filter(Variable %in% c("Number of infections for observed cases (estimated)",
-                         "Number of infections for observed cases and those not yet observed (estimated) "))
+                         "Number of infections for observed cases and those not yet observed (estimated)"))
+infection_only[infection_only$Variable == "Number of infections for observed cases and those not yet observed (estimated)","mean"] <- NA
+
 augmented_plot_infection <- plot_augmented_data(infection_only, confirm_data,ymax=5000,ybreaks=500,
-                                                max_date = date_today, min_date="01.01.2020", thresholds=NULL,
+                                                max_date = date_today, min_date="01.01.2020", thresholds=thresholds,
                                                 cols = c("grey40","blue","skyblue"), cols2 = c("blue","skyblue"),
                                                 title = "Augmented and observed timings of infection in China")
 augmented_plot_infection

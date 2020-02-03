@@ -15,7 +15,7 @@ all_dat <- NULL
 
 ## For each day, go back in time until the number of new confirmations in that period
 ## is greater than x=20
-threshold <- 20
+threshold <- 25
 first_date <- number_confirmed$reporting_date[which(cumsum(number_confirmed$n) > threshold)[1]]
 use_dates <- dates[dates >= first_date]
 probs <- numeric(length(use_dates))

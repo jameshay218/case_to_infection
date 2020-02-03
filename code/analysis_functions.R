@@ -366,4 +366,3 @@ plot_forward_simulation <- function(data_quantiles, onset_data, max_date="27.01.
           legend.position = c(0.25,0.75)) 
   p
 }
->>>>>>> bc58d52dc70cbea06ed0ab0bd01fba1aa1db27a7

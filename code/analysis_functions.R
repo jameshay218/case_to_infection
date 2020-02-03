@@ -167,8 +167,10 @@ plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax
 
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
-                                min_date="01.12.2019",
-                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700){
+                                min_date="01.12.2019", cols = c("grey40","blue","skyblue","orange","red"),
+                                cols2 = c("blue","skyblue","orange","red"),
+                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700,
+                                title = "Augmented and observed timings of infection and symptom onset in China"){
   threshold_dat <- data.frame(xmin=c(convert_date("01.12.2019"), thresholds),
                               xmax=c(thresholds, convert_date(max_date)),
                               fills=c(">95%",">80%",">50%",">20%","<20%"))
@@ -190,9 +192,9 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
                  breaks="5 day") + 
-    scale_fill_manual(values=c("blue","grey40","orange")) + 
-    scale_color_manual(values=c("blue","orange"),guide="none") +
-    ggtitle("Augmented and observed timings of infection and symptom onset in China") +
+    scale_fill_manual(values= cols) + 
+    scale_color_manual(values=cols2,guide="none") +
+    ggtitle(title) +
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +
     theme(axis.text.x=element_text(angle=45,hjust=1),
@@ -200,6 +202,7 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
           legend.position = c(0.25,0.75)) 
   p
 }
+
 
 plot_augmented_data_province <- function(data_quantiles_province, confirmed_data_province, max_date="27.01.2020"){
   p <- ggplot(data_quantiles_province) +
@@ -306,3 +309,61 @@ sheet_name_key <- c("Feb02_9PM"="2020-02-02 21:00:00 UTC",
                     "Jan23_12pm"="2020-01-23 12:00:00 UTC",  
                     "Jan22_12pm"="2020-01-22 12:00:00 UTC",  
                     "Jan22_12am"="2020-01-21 23:59:59 UTC")
+#' fit geometric distribution using Stan
+fit_geometric_stan <- function(delay_data, model) {
+  
+  # define data and constants
+  data_list <- list(  
+    N= length(delay_data),    # number of sampling times
+    delay = delay_data)
+  
+  # fit the model to data
+  chains <- 3 # number of NUTS chains to run in parallel
+  set.seed(1) # set random number generator seed for reproducibility
+  # fit model to data using No U-Turn sampler
+  if(missing(model)) {
+    fit <- stan(get_model_filename("geometric.stan"), data=data_list,  chains=3,verbose = TRUE)
+  } else {
+    fit <- sampling(model, data=data_list,  chains=3,verbose = TRUE)
+  }
+  fit
+}
+
+#' simulate confirmation times
+simulate_confirmation_times <- function(date_onset_symptoms, p_confirm_delay){
+  # start from symptom onset time for now
+  
+  ## From the provided geometric distribution + 1
+  sim_confirmation_delays <- rgeom(length(date_onset_symptoms), p_confirm_delay) + 1
+  date_confirmation <- date_onset_symptoms + floor(sim_confirmation_delays)
+
+  return(date_confirmation)
+}
+
+plot_forward_simulation <- function(data_quantiles, onset_data, max_date="27.01.2020",
+                                min_date="01.12.2019", cols = c("grey40"),
+                                cols2 = c("grey40"),
+                                ymax=500,ybreaks=25, 
+                                title = "Forward simulation of confirmed cases from symptom onsets"){
+  
+  p <- ggplot(data_quantiles)
+  p <- p +
+    #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
+    geom_bar(data=onset_data,aes(x=date_onset_symptoms,y=n),fill = "orange", stat="identity") +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower),alpha=0.25, fill = "grey40") +
+    geom_line(aes(x=date, y=mean),size=1, col = "grey40") +
+    scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
+    coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
+    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
+                 breaks="5 day") + 
+    scale_fill_manual(values= cols) + 
+    scale_color_manual(values=cols2,guide="none") +
+    ggtitle(title) +
+    ylab("Count") + xlab("Date of event") +
+    theme_pubr() +
+    theme(axis.text.x=element_text(angle=45,hjust=1),
+          panel.grid.major = element_line(colour="grey70"),
+          legend.position = c(0.25,0.75)) 
+  p
+}
+>>>>>>> bc58d52dc70cbea06ed0ab0bd01fba1aa1db27a7

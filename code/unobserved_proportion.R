@@ -22,7 +22,7 @@ for(j in 1:days_past) {
   for(i in 1:nrow(tmp)){
     x <- tmp[i,]
     ## Weibull incubation period and geometric confirmation delay
-    prob <- prob + (pweibull(x$sympt+1, alpha, sigma)-pweibull(x$sympt, alpha,sigma)) * dgeom(x$confirm-1, fit_kudos$par)
+    prob <- prob + (pweibull(x$sympt+1, alpha, sigma)-pweibull(x$sympt, alpha,sigma)) * dgeom(x$confirm-1, p_confirm_delay)
   }
   ## Proportion of past cases seen is therefore the sum of these probabilities
   prop_seen[j] <- prob
@@ -34,6 +34,6 @@ times <- times_unobserved <- seq(-total_days_considered, -1, 1)
 #     xlab = "Date",
 #    ylab = "Proportion of Infections Occurring That Day \nThat Have Been Reported By the Current Day")
 
-prop_confirmed <- cumsum(dgeom(0:200,fit_kudos$par))
+prop_confirmed <- cumsum(dgeom(0:200,p_confirm_delay))
 
 

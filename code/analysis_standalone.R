@@ -1,5 +1,8 @@
 setwd("~/Documents/case_to_infection/")
 #setwd("~/GitHub/case_to_infection/")
+refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
+# if FALSE, read from file
+bayesian_p_confirm_delay <- TRUE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
 library(ggplot2)
 library(tidyverse)
@@ -13,6 +16,11 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 library(extraDistr)
+if(refit_p_confirm_delay && bayesian_p_confirm_delay) {
+  library(rstan)
+  options(mc.cores = parallel::detectCores())
+  rstan_options(auto_write = TRUE)
+}
 source("code/analysis_functions.R")
 
 
@@ -36,9 +44,26 @@ repeats <- 1000
 ## First step is to clean and take a look at the data
 ## This combines the data for Hubei and other locations in China
 ## Note this is ONLY China
-source("code/pull_and_clean_linelist.R")
-source("code/pull_kudos_linelist.R")
-source("code/pull_arcgis_data.R")
+
+# kudos_dat <- readRDS("data/kudos_dat.rds")
+# combined_dat <- readRDS("data/combined_dat.rds")
+# use_data_diff <- readRDS("data/use_data_diff.rds")
+
+# check if we have already loaded the objects, load if not
+if(!exists("combined_dat")) {
+  source("code/pull_and_clean_linelist.R")
+}
+if(!exists("kudos_dat")) {
+  source("code/pull_kudos_linelist.R")
+}
+if(!exists("use_data_diff")) {
+  source("code/pull_arcgis_data.R")
+}
+
+# saveRDS(kudos_dat, "data/kudos_dat.rds")
+# saveRDS(combined_dat, "data/combined_dat.rds")
+# saveRDS(use_data_diff, "data/use_data_diff.rds")
+
 ## Key data objects produce:
 ## kudos_dat: the kudos line list data
 ## combined_dat: the Mortiz Kraemer line list data
@@ -80,6 +105,67 @@ combined_dat_final <- merge_data(combined_dat, use_data_diff, switch_date="21.01
 combined_dat_final$ID <- 1:nrow(combined_dat_final)
 
 source("code/fit_delay_distributions.R")
+
+
+
+####################################
+## KUDOS LINE LIST CONFIRMATION DELAY
+####################################
+## Fit a geometric distribution to the confirmation delay distribution
+if(refit_p_confirm_delay) {
+  use_delays_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>% pull(delay)
+  if(bayesian_p_confirm_delay) { # bayesian fit (posterior)
+    confirmation_delay_model <- stan_model("code/geometric.stan")
+    fit_kudos <- fit_geometric_stan(use_delays_kudos - 1, confirmation_delay_model) %>%
+      extract(pars = "p")
+    names(fit_kudos) <- "par"
+  } else {
+    # frequentist fit (point estimate)
+    fit_kudos <- optim(c(0.1), fit_geometric, dat=use_delays_kudos-1,method="Brent",lower=0,upper=1)
+  }
+} else {
+## or read from file
+  if(bayesian_p_confirm_delay) {
+    fit_kudos <- read.csv("data/p_confirm_delay_draws.csv") %>%
+      as.list
+    names(fit_kudos) <- "par"
+  } else {
+    fit_kudos <- list(par = as.numeric(read.csv("data/p_confirm_delay.csv")))
+  }
+}
+
+plot_times <- seq(0,max(kudos_dat$delay,na.rm=TRUE))
+predict_delay <- function(p_confirm_delay) {
+  dgeom(plot_times, prob = p_confirm_delay)
+} 
+
+p_confirm_delay_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>%
+  ggplot() + 
+  geom_histogram(aes(x=delay,y=..density..),binwidth=1,col="black") +
+  scale_x_continuous(breaks=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5),labels=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5)) +
+  scale_y_continuous(expand=c(0,0),limits=c(0,0.15)) +
+  geom_vline(xintercept=1,linetype="dashed") +
+  ylab("Probability density") + xlab("Days since symptom onset") +
+  ggtitle("Distribution of delays between symptom onset\n and confirmation, Kudos line list data") +
+  theme_pubr()
+if(bayesian_p_confirm_delay) {
+  fit_kudos_line <- vapply(fit_kudos$par, predict_delay, numeric(length(plot_times))) %>%
+    apply(1, quantile, probs = c(0.025, 0.975))
+  fit_line_kudos_dat <- data.frame(x=plot_times + 1,ymin=fit_kudos_line[1,],
+                                   ymax = fit_kudos_line[2,])
+  
+  p_confirm_delay_kudos <- p_confirm_delay_kudos +
+    geom_ribbon(data = fit_line_kudos_dat, aes(x = x, ymin = ymin, ymax = ymax), fill = "red")
+} else {
+  fit_kudos_line <- dgeom(seq(0,max(kudos_dat$delay,na.rm=TRUE),by=1),prob=fit_kudos$par)
+  fit_line_kudos_dat <- data.frame(x=seq(1,max(kudos_dat$delay,na.rm=TRUE)+1,by=1),y=fit_kudos_line)
+  
+  p_confirm_delay_kudos <- p_confirm_delay_kudos +
+    geom_line(data=fit_line_kudos_dat, aes(x=x,y=y), col="red",size=1)
+}
+
+p_confirm_delay_kudos
+>>>>>>> bc58d52dc70cbea06ed0ab0bd01fba1aa1db27a7
 
 ####################################
 ## SYMPTOM ONSET DISTRIBUTION
@@ -128,6 +214,13 @@ for(i in seq_len(repeats)){
   incu_period_rand <- weibull_stan_draws[sample(seq_len(nrow(weibull_stan_draws)),1),]
   alpha <- incu_period_rand$alpha
   sigma <- incu_period_rand$sigma
+  # sample from posterior if bayesian
+  if(bayesian_p_confirm_delay) {
+    p_confirm_delay <- sample(fit_kudos$par,1)
+  } else {
+    # use point estimate if frequentist
+    p_confirm_delay <- fit_kudos$par
+  }
   
   ## Get symptom onset and infection times
   tmp <- augment_infection_times(combined_dat_final, 
@@ -162,18 +255,18 @@ sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
 source("code/unobserved_proportion.R")
 
 sim_data_sum <- sim_data_sum %>% group_by(repeat_no, var) %>%
-  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff]),
-         n_inflated=floor(n/prop_observed))# %>%
+  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff])) #%>%
   #select(-date_diff)
 sim_data_sum$n_inflated <- rnbinom(nrow(sim_data_sum), sim_data_sum$n, sim_data_sum$prop_observed) + sim_data_sum$n
 #sim_data_sum <- sim_data_sum %>% mutate(n_inflated = ifelse(var=="date_infection",n_inflated, n))
 sim_data_sum <- sim_data_sum %>% ungroup() %>% complete(repeat_no, var, date, fill=list(n=0,n_inflated=0,prop_observed=0))
 
 variable_key2 <- c("date_confirmation"="Confirmation date (known)",
-                   "date_onset_symptoms"="Onset of symptoms for cases observed to date",
+                   "date_onset_symptoms"="Number of observed cases with symptom onset (estimated from date of confirmation)",
+                   "date_onset_symptoms_inflated"="Number of observed and not yet observed cases with symptom onset (estimated)",
                    "date_admission_hospital"="Hospital admission date",
-                   "date_infection"="Augmented infection date for cases observed to date")
-
+                   "date_infection"="Number of infections for observed cases (estimated)",
+                   "date_infection_inflated" = "Number of infections for observed cases and those not yet observed (estimated) ")
 
 ################################################
 ## OVERALL PLOT
@@ -181,10 +274,13 @@ variable_key2 <- c("date_confirmation"="Confirmation date (known)",
 sim_data_quantiles <- sim_data_sum %>% group_by(date, var) %>% 
   do(data.frame(t(c(quantile(.$n, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n)))))
 
+sim_data_quantiles_inflated$var <- c("date_infection" = "date_infection_inflated",
+                                     "date_onset_symptoms" = "date_onset_symptoms_inflated")[sim_data_quantiles$var]
 
+sim_data_quantiles <- bind_rows(sim_data_quantiles, sim_data_quantiles_inflated) %>% arrange(date)
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
-confirm_data$Variable <- "Confirmed cases of infections that have been observed"
+confirm_data$Variable <- "Number of confirmations for observed cases (observed)"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 
@@ -216,6 +312,23 @@ augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm
                                            max_date = date_today, min_date="01.01.2020", thresholds=thresholds)
 augmented_data_plot
 
+onset_only <- sim_data_quantiles_truncated %>% 
+                filter(Variable %in% c("Number of observed cases with symptom onset (estimated from date of confirmation)",
+                                  "Number of observed and not yet observed cases with symptom onset (estimated)"))
+augmented_plot_onset <- plot_augmented_data(onset_only, confirm_data,ymax=5000,ybreaks=500,
+                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL,
+                                            cols = c("grey40","orange","red"), cols2 = c("orange","red"),
+                                            title = "Augmented and observed timings of symptom onset in China")
+augmented_plot_onset
+infection_only <- sim_data_quantiles_truncated %>% 
+  filter(Variable %in% c("Number of infections for observed cases (estimated)",
+                         "Number of infections for observed cases and those not yet observed (estimated) "))
+augmented_plot_infection <- plot_augmented_data(infection_only, confirm_data,ymax=5000,ybreaks=500,
+                                                max_date = date_today, min_date="01.01.2020", thresholds=NULL,
+                                                cols = c("grey40","blue","skyblue"), cols2 = c("blue","skyblue"),
+                                                title = "Augmented and observed timings of infection in China")
+augmented_plot_infection
+#plot_grid(augmented_plot_onset, augmented_plot_infection)
 ## Distribution of times for each individual
 
 sim_data_quantiles_indiv <- sim_data_all %>% group_by(individual, var) %>% 
@@ -244,7 +357,6 @@ sim_data_infections1 <- bind_cols(combined_dat_final,sim_data_symptoms1)
 
 write_csv(sim_data_infections1, path="augmented_data/augmented_infection_times.csv")
 write_csv(sim_data_symptoms1, path="augmented_data/augmented_symptom_times.csv")
-
 
 ## Create results panel plot programmatically
 element_text_size <- 11
@@ -344,4 +456,4 @@ by_province_top6
 p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
 p_start_delay_dist
 
-source("code/shifting_curves.R")
+# source("code/shifting_curves.R")

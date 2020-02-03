@@ -29,7 +29,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 2000
+repeats <- 1000
 
 ## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data

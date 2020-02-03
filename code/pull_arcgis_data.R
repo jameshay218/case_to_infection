@@ -1,11 +1,23 @@
 ## Pull latest cumulative incidence data from arcgis
 url <- "https://docs.google.com/spreadsheets/d/1yZv9w9zRKwrGTaR-YzmAqMefw4wMlaXocejdxZaTs6w/htmlview?usp=sharing&sle=true"
 available_dates <- sheets_sheets(url)
+use_colnames <- c("Province/State", "Country/Region", "Last Update", "Confirmed", 
+                  "Deaths", "Recovered","Demised")
+
+colnames_key <- c("Province/State"="province", "Country/Region"="country_region", "Last Update"="updated", 
+                 "Confirmed"="confirmed","Deaths"="deaths", "Recovered"="recovered","Demised"="deaths",
+                 "Date last updated"="updated","Suspected"="suspected",
+                 "Country"="country")
 
 ## Go through and pull each sheet
 all_data <- NULL
+all_data_list <- NULL
 for(date in available_dates) {
+  Sys.sleep(1)
   tmp_dat <- read_sheet(ss=url,sheet=date)
+  use_colnames_tmp <- intersect(names(colnames_key), colnames(tmp_dat))
+  tmp_dat <- tmp_dat %>% select(use_colnames_tmp)
+  colnames(tmp_dat) <- colnames_key[colnames(tmp_dat)]
   ## Some of the datetimes were entered incorrectly, so correct here
   if(date == "Jan25_12am") {
     tmp_dat <- tmp_dat %>% mutate(`Last Update`=as.POSIXct("2020-01-25 00:00:00 UTC",format="%Y-%m-%d %H:%M:%OS"))
@@ -13,15 +25,19 @@ for(date in available_dates) {
   if(date == "Jan25_10pm") {
     tmp_dat <- tmp_dat %>% mutate(`Last Update`=as.POSIXct("2020-01-25 22:00:00 UTC",format="%Y-%m-%d %H:%M:%OS"))
   }
+  colnames(tmp_dat)[colnames(tmp_dat) == "Demised"]
+  
   all_data <- bind_rows(all_data, tmp_dat)
+  all_data[[date]] <- tmp_dat
 }
 use_data <- all_data
 
 ## More manageable variable names
-colnames(use_data) <- c("province","country_region","updated",
-                        "confirmed","deaths","recovered",
-                        "suspected","demised","country",
-                        "last_date")
+#colnames(use_data) <- c("province","country_region","updated",
+#                        "confirmed","deaths","recovered",
+#                        "suspected","demised","country",
+#                        "last_date")
+colnames(use_data) <- c("province","country_region","updated","confirmed","deaths","recovered")
 
 ## can't use data with no report date
 use_data <- use_data %>% filter(!is.na(updated))

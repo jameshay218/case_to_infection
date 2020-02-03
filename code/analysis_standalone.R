@@ -1,5 +1,5 @@
-#setwd("~/Documents/case_to_infection/")
-setwd("~/GitHub/case_to_infection/")
+setwd("~/Documents/case_to_infection/")
+#setwd("~/GitHub/case_to_infection/")
 
 library(ggplot2)
 library(tidyverse)
@@ -29,7 +29,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 2000
+repeats <- 1000
 
 ## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data
@@ -273,7 +273,7 @@ thresholds <- c(threshold_99, threshold_80, threshold_50, threshold_20)
 #augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
 
 sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date <= convert_date(Sys.Date()))
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=5000,ybreaks=500,
+augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=10000,ybreaks=500,
                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL)
 augmented_data_plot
 

@@ -110,3 +110,97 @@ p_confirm_delay_kudos_gamma <- kudos_dat %>% select(delay) %>% drop_na() %>%
   theme_pubr()
 p_confirm_delay_kudos_gamma
 
+
+
+
+
+####################################
+## KUDOS LINE LIST CONFIRMATION DELAY
+####################################
+## Fit a geometric distribution to the confirmation delay distribution
+if(refit_p_confirm_delay) {
+  use_delays_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>% pull(delay)
+  if(bayesian_p_confirm_delay) { # bayesian fit (posterior)
+    confirmation_delay_model <- stan_model("code/geometric.stan")
+    fit_kudos <- fit_geometric_stan(use_delays_kudos - 1, confirmation_delay_model) %>%
+      extract(pars = "p")
+    names(fit_kudos) <- "par"
+  } else {
+    # frequentist fit (point estimate)
+    fit_kudos <- optim(c(0.1), fit_geometric, dat=use_delays_kudos-1,method="Brent",lower=0,upper=1)
+  }
+} else {
+  ## or read from file
+  if(bayesian_p_confirm_delay) {
+    fit_kudos <- read.csv("data/p_confirm_delay_draws.csv") %>%
+      as.list
+    names(fit_kudos) <- "par"
+  } else {
+    fit_kudos <- list(par = as.numeric(read.csv("data/p_confirm_delay.csv")))
+  }
+}
+
+plot_times <- seq(0,max(kudos_dat$delay,na.rm=TRUE))
+predict_delay <- function(p_confirm_delay) {
+  dgeom(plot_times, prob = p_confirm_delay)
+} 
+
+p_confirm_delay_kudos <- kudos_dat %>% select(delay) %>% drop_na() %>%
+  ggplot() + 
+  geom_histogram(aes(x=delay,y=..density..),binwidth=1,col="black") +
+  scale_x_continuous(breaks=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5),labels=seq(0,max(kudos_dat$delay,na.rm=TRUE),by=5)) +
+  scale_y_continuous(expand=c(0,0),limits=c(0,0.15)) +
+  geom_vline(xintercept=1,linetype="dashed") +
+  ylab("Probability density") + xlab("Days since symptom onset") +
+  ggtitle("Distribution of delays between symptom onset\n and confirmation, Kudos line list data") +
+  theme_pubr()
+if(bayesian_p_confirm_delay) {
+  fit_kudos_line <- vapply(fit_kudos$par, predict_delay, numeric(length(plot_times))) %>%
+    apply(1, quantile, probs = c(0.025, 0.975))
+  fit_line_kudos_dat <- data.frame(x=plot_times + 1,ymin=fit_kudos_line[1,],
+                                   ymax = fit_kudos_line[2,])
+  
+  p_confirm_delay_kudos <- p_confirm_delay_kudos +
+    geom_ribbon(data = fit_line_kudos_dat, aes(x = x, ymin = ymin, ymax = ymax), fill = "red")
+} else {
+  fit_kudos_line <- dgeom(seq(0,max(kudos_dat$delay,na.rm=TRUE),by=1),prob=fit_kudos$par)
+  fit_line_kudos_dat <- data.frame(x=seq(1,max(kudos_dat$delay,na.rm=TRUE)+1,by=1),y=fit_kudos_line)
+  
+  p_confirm_delay_kudos <- p_confirm_delay_kudos +
+    geom_line(data=fit_line_kudos_dat, aes(x=x,y=y), col="red",size=1)
+}
+
+p_confirm_delay_kudos
+
+
+####################################
+## SYMPTOM ONSET DISTRIBUTION
+## UPDATED -- Now using the distribution from Weibull derived by
+## Backer et al.
+####################################
+## 1000 draws from their posterior
+n_samps <- 1000
+times <- seq(0,25,by=0.1)
+weibull_dists <- matrix(0, nrow=1000, ncol=length(times))
+for(i in seq_len(n_samps)){
+  pars <- weibull_stan_draws[i,]
+  alpha <- pars$alpha
+  sigma <- pars$sigma
+  weibull_dists[i,] <- dweibull(times, alpha, sigma)
+}
+colnames(weibull_dists) <- times
+weibull_dists_bounds <- as.data.frame(t(apply(weibull_dists, 2, function(x) quantile(x, c(0.025,0.5,0.975)))))
+colnames(weibull_dists_bounds) <- c("lower","median","upper")
+weibull_dists_bounds$times <- times
+
+p_incubation <- ggplot(weibull_dists_bounds) + 
+  geom_ribbon(aes(x=times, ymax=upper,ymin=lower),fill="grey70",alpha=0.4,col="black") + 
+  geom_line(aes(x=times,y=median),size=1) +
+  ylab("Probability density") +
+  xlab("Days since onset of infection") +
+  ggtitle("Incubation period distribution\n (Weibull, time from infection to symptoms)") +
+  scale_y_continuous(limits=c(0,0.3),expand=c(0,0),breaks=seq(0,0.3,by=0.05)) +
+  scale_x_continuous(expand=c(0,0)) +
+  theme_pubr()
+p_incubation
+

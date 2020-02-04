@@ -51,10 +51,10 @@ for(i in seq_along(test_colnames)){
   failed_conversions <- unique(unique_dates[intersect(which(!is.na(unique_dates)), which(is.na(test1)))])
   all_failed_conversions <- c(all_failed_conversions, failed_conversions)
 }
-message(cat("Entries that could not be converted: ", unique(all_failed_conversions),sep=" "))
-message(cat("Entries that were outside range ", as.character(valid_date_start), "to", as.character(valid_date_end),": ", unique(all_outside_range),sep=" "))
+message(cat("Entries that could not be converted: ", unique(all_failed_conversions),sep="\n"))
+message(cat("Entries that were outside range ", as.character(valid_date_start), "to", as.character(valid_date_end),": ", unique(all_outside_range),sep="\n"))
 
-message(cat("Already excluded entries: ", confounding_dates, sep=" "))
+message(cat("Already excluded entries: ", confounding_dates, sep="\n"))
 
 dput(unique(all_failed_conversions))
 dput(unique(all_outside_range))
@@ -69,9 +69,9 @@ hubei_dat <- hubei_dat %>% select(use_colnames)
 hubei_dat$age <- as.character(hubei_dat$age)
 #########
 ## Clean up dates
-unique(hubei_dat$date_onset_symptoms)
-unique(hubei_dat$date_admission_hospital)
-unique(hubei_dat$date_confirmation)
+#unique(hubei_dat$date_onset_symptoms)
+#unique(hubei_dat$date_admission_hospital)
+#unique(hubei_dat$date_confirmation)
 
 hubei_dat$date_onset_symptoms <- clean_dates(hubei_dat$date_onset_symptoms)
 hubei_dat$date_admission_hospital <- clean_dates(hubei_dat$date_admission_hospital)
@@ -88,9 +88,9 @@ hubei_dat$hubei <- 1
 other_dat$age <- as.character(other_dat$age)
 ## Clean up dates
 other_dat <- other_dat[,use_colnames]
-unique(other_dat$date_onset_symptoms)
-unique(other_dat$date_admission_hospital)
-unique(other_dat$date_confirmation)
+#unique(other_dat$date_onset_symptoms)
+#unique(other_dat$date_admission_hospital)
+#unique(other_dat$date_confirmation)
 
 other_dat$date_onset_symptoms <- clean_dates(other_dat$date_onset_symptoms)
 other_dat$date_admission_hospital <- clean_dates(other_dat$date_admission_hospital)

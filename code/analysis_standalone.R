@@ -1,3 +1,5 @@
+######################
+## SETUP
 setwd("~/Documents/case_to_infection/")
 #setwd("~/GitHub/case_to_infection/")
 refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirmation delay data;
@@ -44,8 +46,10 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 1000
+repeats <- 100
 
+#########################
+## LOAD DATA
 ## load the data - try to only do this once otherwise auth token gets stale
 ## First step is to clean and take a look at the data
 ## This combines the data for Hubei and other locations in China
@@ -302,16 +306,12 @@ final_quantiles <- final_all %>% select(repeat_no, var, date, inflated0, total) 
 colnames(final_quantiles) <- c("date","var","inflated",
                                "min","lower","midlow","median","midhigh","upper","max","mean")
 final_quantiles$var_full <- paste0(final_quantiles$var, "_", final_quantiles$inflated)
-ggplot(final_quantiles) + 
-  geom_ribbon(aes(x=date,ymin=lower,ymax=upper,fill=inflated), alpha=0.5) +
-  #geom_ribbon(aes(x=date,ymin=midlow,ymax=midhigh,fill=inflated), alpha=0.5) +
-  facet_wrap(~var,scales="free_y") +
-  scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(date_today)+1),
-               breaks="5 day") + theme_bw() + theme(axis.text.x=element_text(angle=45,hjust=1))
+
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
 confirm_data$Variable <- "date_confirmation"
 confirm_data$inflated <- "total"
+confirm_data$var <- "confirmed"
 
 final_quantiles$var_full <- variable_key2[final_quantiles$var_full]
 
@@ -336,26 +336,6 @@ thresholds <- times[sapply(threshold_vals, function(x) which(prop_seen > x)[1])]
 ## GET PROPORTION OBSERVED BY DATE OF SYMPTOM ONSET
 prop_symp_seen <- prop_sympt_observed_mean %>% pull(mean)
 thresholds_symp <- times[sapply(threshold_vals, function(x) which(prop_symp_seen > x)[1])]
-
-#augmented_data_plot <- plot_augmented_data(sim_data_quantiles, confirm_data,ymax=2000,ybreaks=100,max_date = date_today, thresholds)
-
-sim_data_quantiles_truncated <- sim_data_quantiles %>% filter(date <= convert_date(Sys.Date()))
-augmented_data_plot <- plot_augmented_data(sim_data_quantiles_truncated, confirm_data,ymax=6000,ybreaks=500,
-                                           max_date = date_today, min_date="01.01.2020", thresholds=NULL)
-augmented_data_plot
-
-onset_only <- sim_data_quantiles_truncated %>% 
-                filter(Variable %in% c("Number of observed cases with symptom onset (estimated from date of confirmation)",
-                                  "Number of observed and not yet observed cases with symptom onset (estimated)"))
-augmented_plot_onset <- plot_augmented_data(onset_only, confirm_data,ymax=5000,ybreaks=500,
-                                            max_date = date_today, min_date="01.01.2020", thresholds=NULL,
-                                            cols = c("grey40","orange","red"), cols2 = c("orange","red"),
-                                            title = "Augmented and observed timings of symptom onset in China")
-augmented_plot_onset
-infection_only <- sim_data_quantiles_truncated %>% 
-  filter(Variable %in% c("Number of infections for observed cases (estimated)",
-                         "Number of infections for observed cases and those not yet observed (estimated)"))
-infection_only[infection_only$Variable == "Number of infections for observed cases and those not yet observed (estimated)","mean"] <- NA
 
 p <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
                           ymax1=10000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)

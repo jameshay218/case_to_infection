@@ -1,5 +1,27 @@
 generate_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
   ## Make total confirmation delay distribution
+  #ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 
+  #  mutate(total_delay=confirm_delay+symp_delay) %>% full_join(weibull_pars) %>%
+  #  mutate(total_prob=forward_prob_total(symp_delay, confirm_delay, alpha, sigma, p_confirm_delay)) %>%
+  #  group_by(total_delay, repeat_no) %>% summarise(total_prob_sum=sum(total_prob)) %>% ungroup() %>% 
+  #  group_by(repeat_no) %>%
+  #  mutate(cumu_prob_total=cumsum(total_prob_sum))
+  
+  ## Make just final confirmation delay distribution
+  confirm_delay <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax, p_confirm_delay=p_confirm_delay) %>%
+    mutate(confirm_prob=dgeom(confirm_delay-1,p_confirm_delay)) %>%
+    group_by(repeat_no) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob))
+  
+  ## Make just symptom onset delay distribution
+  symptom_delay <- expand_grid(repeat_no=1:repeats,symp_delay=0:tmax) %>% full_join(weibull_pars) %>%
+    mutate(symp_prob=incubation_prob(symp_delay, alpha, sigma)) %>%
+    group_by(repeat_no) %>% mutate(cumu_prob_symp=cumsum(symp_prob))
+  
+  return(list(confirm_delay, symptom_delay))
+}
+
+generate_total_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
+  ## Make total confirmation delay distribution
   ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 
     mutate(total_delay=confirm_delay+symp_delay) %>% full_join(weibull_pars) %>%
     mutate(total_prob=forward_prob_total(symp_delay, confirm_delay, alpha, sigma, p_confirm_delay)) %>%
@@ -7,17 +29,13 @@ generate_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm
     group_by(repeat_no) %>%
     mutate(cumu_prob_total=cumsum(total_prob_sum))
   
-  ## Make just final confirmation delay distribution
-  confirm_delay <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax, p_confirm_delay=p_confirm_delay) %>%
-    mutate(confirm_prob=dgeom(confirm_delay-1,p_confirm_delay)) %>%
-    group_by(repeat_no) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob)) %>% left_join(ret)
-  
-  
-  ## Join back together
-  confirm_delay <- confirm_delay %>% select(repeat_no, confirm_delay, total_delay, cumu_prob_confirm, cumu_prob_total)
-  return(confirm_delay)
+  return(ret)
 }
 
+
+incubation_prob  <- function(symp_delay, alpha, sigma){
+  pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma)
+}
 forward_prob_total <- function(symp_delay, confirm_delay, alpha, sigma, p_confim_delay){
   (pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma))*dgeom(confirm_delay-1, p_confirm_delay)
   
@@ -38,7 +56,9 @@ generate_forward_probabilities <- function(alpha, sigma, p_confirm_delay,tmax=10
 
 
 
-
+augment_infection_time_from_symp <- function(alpha, sigma){
+  floor(rweibull(1, alpha, sigma))
+}
 
 #' Augment infection times
 augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_confirm_delay=0.15, gamma_mean=NULL, gamma_var=NULL){
@@ -95,45 +115,81 @@ plot_time_from_start <- function(sim_data_infections_melted, individual_key,xmax
   
 }
 
-
-plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.2020",
-                                min_date="01.12.2019", cols = c("grey40","blue","skyblue","orange","red"),
-                                cols2 = c("blue","skyblue","orange","red"),
-                                ymax=500,ybreaks=25, thresholds=NULL,threshold_y=700,
-                                title = "Augmented and observed timings of infection and symptom onset in China"){
-  threshold_dat <- data.frame(xmin=c(convert_date("01.12.2019"), thresholds),
-                              xmax=c(thresholds, convert_date(max_date)),
-                              fills=c(">95%",">80%",">50%",">20%","<20%"))
+plot_augmented_events <- function(data_quantiles, confirmed_data, 
+                                  var_name="date_infections",
+                                      max_date="01.02.2020",min_date="01.12.2019",
+                                      ymax=500,ybreaks=25,
+                                      thresholds=NULL,
+                                      cols=c("skyblue","blue"),
+                                      title="Augmented and observed infection incidence against confirmed cases",
+                                      var_labels=c("95th percentile on observed and unobserved infections (estimates)",
+                                               "Number of infections from observed cases (estimates)"),bot=TRUE){
+  data_quantiles[data_quantiles$inflated == "total",c("median","mean")] <- NA
+  data_quantiles$inflated <- factor(data_quantiles$inflated, levels=c("total","inflated0"))
+  p <- ggplot(data_quantiles[data_quantiles$var == var_name,])
   
-  p <- ggplot(data_quantiles)
+  ## Threshold markers for infection onsets
   if(!is.null(thresholds)) {
     threshold_dat <- data.frame(text=c(">95%",">80%",">50%",">20%"),
-                                x_val=thresholds)
+                                x_val=thresholds,stringsAsFactors = FALSE)
     p <- p +    
       geom_vline(xintercept=thresholds,linetype="dashed") +
-      geom_label(data=threshold_dat,aes(x=x_val, y=ymax*0.4, label=text))
+      geom_label(data=threshold_dat,aes(x=x_val, y=ymax*0.8, label=text))
   }
-  p <- p +
-    #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
-    #geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=inflated),stat="identity") +
-    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated,col=inflated),alpha=0.25) +
-    geom_line(aes(x=date, y=mean,col=inflated),size=1) +
+  p <- 
+    p +
+    geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=var),stat="identity",col="black", size=0.5) +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.4, size=0.5) +
+    geom_line(aes(x=date, y=mean,col=inflated),size=0.5) +
     scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
-    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
+    scale_x_date(limits=c(convert_date(min_date),convert_date(max_date)+1),
                  breaks="5 day") + 
-    scale_fill_manual(values= cols) + 
-    scale_color_manual(values=cols2,guide="none") +
-    ggtitle(title) +
-    facet_wrap(~Variable) +
+    scale_fill_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), name="Variable",
+                      labels=c("Confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
+    scale_color_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), guide="none") +
     ylab("Count") + xlab("Date of event") +
-    theme_pubr() +
+    theme_pubr()  +
+    ggtitle(title)
+  if(bot) {
+    p <- p +
     theme(axis.text.x=element_text(angle=45,hjust=1),
           panel.grid.major = element_line(colour="grey70"),
-          legend.position = c(0.25,0.75)) 
+          legend.position = c(0.3,0.6))
+  } else {
+    p <- p + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank(),
+                   panel.grid.major = element_line(colour="grey70"),
+                   legend.position = c(0.3,0.6))
+  }
   p
 }
 
+plot_augmented_data <- function(data_quantiles, confirmed_data, 
+                                max_date="27.01.2020",
+                                min_date="01.12.2019", 
+                                cols1 = c("skyblue","blue"),
+                                cols2 = c("orange","red"),
+                                ymax1=500,
+                                ymax2=500,
+                                ybreaks=25, 
+                                thresholds=NULL,
+                                thresholds_symp=NULL,
+                                title1 = "Augmented and observed timings of infection incidence in China",
+                                title2 = "Augmented and observed timings of symptom onset incidence in China",
+                                var_labels1=c("95th percentile on observed and yet-to-be\n observed infections (estimates)",
+                                             "Number of infections from observed cases (estimates)"),
+                                var_labels2=c("95th percentile on observed and yet-to-be\n observed symptom onsets (estimates)",
+                                             "Number of symptom onsets from observed cases (estimates)")){
+
+  p1 <- plot_augmented_events(data_quantiles, confirmed_data, var_name="date_infections",
+                              max_date, min_date, ymax1, ybreaks, thresholds, cols1, title1,
+                              var_labels1,bot=FALSE)
+  p2 <- plot_augmented_events(data_quantiles, confirmed_data, var_name="date_onset_symptoms",
+                              max_date, min_date, ymax2, ybreaks, thresholds_symp, cols2, title2,
+                              var_labels2,bot=TRUE)
+  #plot_grid(p1,p2,ncol=1,align="h")
+  p1 / p2
+}
 
 plot_augmented_data_province <- function(data_quantiles_province, confirmed_data_province, max_date="27.01.2020"){
   p <- ggplot(data_quantiles_province) +

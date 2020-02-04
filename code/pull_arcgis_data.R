@@ -135,7 +135,7 @@ ggplot(use_data[use_data$province %in% c("Hubei","Guangdong","Zheijiang","Henan"
 use_data_diff <- use_data_subset %>% 
   group_by(province) %>%
   mutate(prev=dplyr::lag(confirmed,n=1)) %>%
-  mutate(prev=ifelse(raw_day==max(raw_day), NA, prev)) %>%
+  #mutate(prev=ifelse(raw_day==max(raw_day), NA, prev)) %>%
   mutate(diff=confirmed-prev) 
 
 p_diff_per_day <- ggplot(use_data_diff) + 

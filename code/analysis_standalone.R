@@ -174,8 +174,10 @@ sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_today-date_on
 all_probs_forward <- generate_forward_probabilities_dist(repeats, used_weibull_pars, fit_kudos$par,tmax=ceiling(max(sim_data_all$total_delay)))
 
 sim_data_all <- sim_data_all %>% left_join(all_probs_forward)
-sim_data_all <- sim_data_all %>% mutate(n_inflated_inf = rnbinom(n(),1,cumu_prob_total)+1,
-                                        n_inflated_symp = rnbinom(n(),1,cumu_prob_confirm)+1)
+#sim_data_all <- sim_data_all %>% mutate(n_inflated_inf = rnbinom(n(),1,cumu_prob_total)+1,
+#                                        n_inflated_symp = rnbinom(n(),1,cumu_prob_confirm)+1)
+sim_data_all <- sim_data_all %>% mutate(n_inflated_inf = 1/cumu_prob_total,
+                                        n_inflated_symp = 1/cumu_prob_confirm)
 
 ## Sum by repeat, variable and date ie. events per day
 sim_inf_sum <- sim_data_all %>% group_by(repeat_no, date_infection) %>% tally()
@@ -215,16 +217,10 @@ sim_data_sum_all <- sim_data_sum1 %>% pivot_longer(cols=c("n", "n_inflated"), na
 sim_data_quantiles <- sim_data_sum_all %>% group_by(date, var, inflated) %>% 
   do(data.frame(t(c(quantile(.$value, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$value)))))
 
-sim_data_quantiles_inflated <- sim_data_sum %>% group_by(date, var) %>% 
-  do(data.frame(t(c(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE),mean(.$n_inflated)))))
-
-sim_data_quantiles_inflated$var <- c("date_infection" = "date_infection_inflated",
-                                     "date_onset_symptoms" = "date_onset_symptoms_inflated")[sim_data_quantiles$var]
-
-sim_data_quantiles <- bind_rows(sim_data_quantiles, sim_data_quantiles_inflated) %>% arrange(date)
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
 confirm_data$Variable <- "Number of confirmations for observed cases (observed)"
+confirm_data$inflated <- "n"
 
 sim_data_quantiles$var <- variable_key2[sim_data_quantiles$var]
 

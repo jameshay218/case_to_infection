@@ -115,9 +115,9 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
   }
   p <- p +
     #geom_rect(data=threshold_dat,aes(xmin=xmin,xmax=xmax,ymin=0,ymax=ymax,alpha=fills),fill="red") +
-    geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
-    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
-    geom_line(aes(x=date, y=mean,col=Variable),size=1) +
+    #geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=inflated),stat="identity") +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated,col=inflated),alpha=0.25) +
+    geom_line(aes(x=date, y=mean,col=inflated),size=1) +
     scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)+1),
@@ -125,6 +125,7 @@ plot_augmented_data <- function(data_quantiles, confirmed_data, max_date="27.01.
     scale_fill_manual(values= cols) + 
     scale_color_manual(values=cols2,guide="none") +
     ggtitle(title) +
+    facet_wrap(~Variable) +
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +
     theme(axis.text.x=element_text(angle=45,hjust=1),

@@ -1,3 +1,5 @@
+wow <- 1
+
 generate_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
   ## Make total confirmation delay distribution
   #ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 

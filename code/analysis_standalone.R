@@ -1,7 +1,7 @@
 ######################
 ## SETUP
-#setwd("~/Documents/case_to_infection/")
-setwd("~/GitHub/case_to_infection/")
+setwd("~/Documents/case_to_infection/")
+#setwd("~/GitHub/case_to_infection/")
 refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
@@ -22,6 +22,10 @@ library(googlesheets4)
 library(extraDistr)
 library(multidplyr)
 
+## For use with multidplyr
+cluster <- new_cluster(4)
+cluster_library(cluster, "tidyverse")
+
 ## Some setup for STAN
 if(refit_p_confirm_delay && bayesian_p_confirm_delay) {
   library(rstan)
@@ -38,7 +42,7 @@ source("code/augmentation_functions.R")
 date_today <- convert_date("03.02.2020")
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
-
+minimum_confirmiation_delay <- 1
 ## source("code/plot_china_map.R")
 
 ## These column names will be kept as keys for the rest of the analysis
@@ -89,6 +93,7 @@ first_date <- min(combined_dat$date_confirmation,na.rm=TRUE)
 last_date <- max(combined_dat$date_confirmation,na.rm=TRUE)
 dates <- first_date:last_date
 dates <- convert_date(dates)
+
 all_combos <- expand.grid(province=as.character(unique(combined_dat$province)),
                           date_confirmation=dates) %>% arrange(province, date_confirmation)
 all_combos$province <- as.character(all_combos$province)
@@ -99,6 +104,8 @@ confirmed_cases_linelist <- confirmed_cases_linelist %>% right_join(all_combos) 
   arrange(province, date_confirmation) %>% mutate(n=ifelse(is.na(n), 0, n))
 
 confirmed_cases_linelist$province <- factor(confirmed_cases_linelist$province, levels=levels(combined_dat$province))
+
+## Only using line list data up to and including 21.01.2020
 confirmed_cases_linelist <- confirmed_cases_linelist %>% 
   mutate(pre_reports=date_confirmation <= convert_date("21.01.2020"))
 
@@ -119,6 +126,16 @@ combined_dat_final <- combined_dat_final %>% filter(date_confirmation <= date_to
 combined_dat_final$individual <- 1:nrow(combined_dat_final)
 
 source("code/fit_delay_distributions.R")
+## Create results panel plot programmatically
+element_text_size <- 11
+text_size_theme <- theme(title=element_text(size=element_text_size), 
+                         axis.text=element_text(size=element_text_size), 
+                         axis.title = element_text(size=element_text_size))
+p_other_confirm_fit1 <- p_other_confirm_fit + text_size_theme
+p_incubation1 <- p_incubation + text_size_theme
+p_confirm_delay_kudos <- p_confirm_delay_kudos + text_size_theme
+assumption_plot <- p_incubation1 / p_confirm_delay_kudos
+assumption_plot
 
 #############################
 ## FULL AUGMENTATION
@@ -149,7 +166,8 @@ for(i in seq_len(repeats)){
                                  inc_period_sigma=sigma, 
                                  gamma_mean=NULL,
                                  gamma_var=NULL,
-                                 p_confirm_delay=fit_kudos$par)
+                                 p_confirm_delay=fit_kudos$par,
+                                 minimum_confirmiation_delay)
   
   sim_data_infections[i,] <- tmp$augmented_infection_times
   sim_data_symptoms[i,] <- tmp$augmented_symptom_onsets
@@ -196,28 +214,17 @@ source("code/generate_inflations.R")
 ################################################
 ## OVERALL PLOT
 ## Distribution of times for each date
-variable_key2 <- c("date_confirmation"="Confirmation date (known)",
-                   "date_onset_symptoms_inflated0"="Number of observed cases with symptom onset (estimated from date of confirmation)",
-                   "date_onset_symptoms_total"="Number of observed and not yet observed cases with symptom onset (estimated)",
-                   "date_admission_hospital"="Hospital admission date",
-                   "date_infections_inflated0"="Number of infections for observed cases (estimated)",
-                   "date_infections_total" = "Number of infections for observed cases and those not yet observed (estimated)")
-
 final_quantiles <- final_all %>% select(repeat_no, var, date, inflated0, total) %>% 
   pivot_longer(cols=c("inflated0","total"),names_to="inflated") %>% 
   group_by(date, var, inflated) %>% 
   do(data.frame(t(c(quantile(.$value, probs = c(0.01,0.025,0.25,0.5,0.75,0.975,0.99),na.rm=TRUE),mean(.$value)))))
 colnames(final_quantiles) <- c("date","var","inflated",
                                "min","lower","midlow","median","midhigh","upper","max","mean")
-final_quantiles$var_full <- paste0(final_quantiles$var, "_", final_quantiles$inflated)
 
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
-confirm_data$Variable <- "date_confirmation"
 confirm_data$inflated <- "total"
 confirm_data$var <- "confirmed"
-
-final_quantiles$var_full <- variable_key2[final_quantiles$var_full]
 
 ## Get vertical dashes to show confirmation proportions over time
 prop_seen <- generate_total_forward_probabilities_dist(repeats, used_weibull_pars, fit_kudos$par, 200)
@@ -273,23 +280,14 @@ if (save_augmented_results) {
   rm(final_infections_share)
 }
 
-rm(sim_symp_full)
-rm(final_infections)
-rm(sim_symp_inflated)
-rm(sim_data_symptoms_melted)
-rm(sim_data_infections_melted)
+rm(symptom_observed)
+rm(symptom_unobserved)
+rm(symptom_all)
+rm(infections_unobserved)
+rm(infections_all)
+rm(final_infections_tally)
+rm(final_symptom_onsets_tally)
 gc()
-
-## Create results panel plot programmatically
-element_text_size <- 11
-text_size_theme <- theme(title=element_text(size=element_text_size), 
-                         axis.text=element_text(size=element_text_size), 
-                         axis.title = element_text(size=element_text_size))
-p_other_confirm_fit1 <- p_other_confirm_fit + text_size_theme
-p_incubation1 <- p_incubation + text_size_theme
-p_confirm_delay_kudos <- p_confirm_delay_kudos + text_size_theme
-assumption_plot <- p_incubation1 / p_confirm_delay_kudos
-assumption_plot
 
 #######################
 ## SPATIAL PLOTS
@@ -298,7 +296,6 @@ assumption_plot
 ## Aggregate by province
 ## Get confirmation time data
 ## Shoved it in a script because it's long...
-gc()
 source("code/generate_byprovince_inflations.R")
 
 final_quantiles_province <- final_all_province %>% select(repeat_no, var, date, inflated0, total, province) %>% 

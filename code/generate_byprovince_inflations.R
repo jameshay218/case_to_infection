@@ -70,7 +70,7 @@ rm(merged_data)
 
 ## Tally infections per day with known symptom onset times
 sim_infections_symptoms_province <- sim_symp_full_province %>% group_by(repeat_no, date_infection, province) %>% tally()
-sim_infections_symptoms_province <- sim_infections_symptoms_province %>% mutate(symp_delay=as.numeric(date_today-date_infection))
+sim_infections_symptoms_province <- sim_infections_symptoms_province %>% mutate(symp_delay=as.numeric(date_today-date_infection)-1)
 
 ## Now combine with symptom onset probs to find proportion of infections on each day
 ## that have not experienced symptoms by now. Then, get number of additional infections

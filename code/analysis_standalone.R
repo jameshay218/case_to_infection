@@ -49,7 +49,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 2000
+repeats <- 1000
 
 #########################
 ## LOAD DATA
@@ -338,7 +338,9 @@ p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_qua
                                                  var_name="date_onset_symptoms",max_date="03.02.2020",min_date="01.12.2019",
                                                  cols=c("orange","red"),
                                                  thresholds=NULL)
+png("plots/infections_by_province.png",height=12,width=12,units="in",res=300)
 p_infections
+dev.off()
 p_symptoms
 
 ## Plot time from start

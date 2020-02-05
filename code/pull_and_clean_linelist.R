@@ -66,8 +66,7 @@ dput(unique(all_outside_range))
 ############################
 ## For this, only need some of the variables
 colnames(hubei_dat)
-hubei_dat <- hubei_dat %>% select(c(use_colnames,"dead(0)/alive(1)","date_death_or_discharge"))
-colnames(hubei_dat)[which(colnames(hubei_dat) == "dead(0)/alive(1)")] <- "outcome"
+hubei_dat <- hubei_dat %>% select(c(use_colnames,"outcome","date_death_or_discharge"))
 hubei_dat$age <- as.character(hubei_dat$age)
 #########
 ## Clean up dates
@@ -133,7 +132,7 @@ combined_dat$country <- factor(combined_dat$country, levels=factor_order)
 
 china_dat <- combined_dat[combined_dat$country == "China",]
 
-combined_dat_melted <- reshape2::melt(combined_dat, id.vars=key_colnames)
+combined_dat_melted <- reshape2::melt(combined_dat, id.vars=c(key_colnames,"outcome"))
 
 
 print("Generating line list data plots")
@@ -160,7 +159,7 @@ combined_dat_melted <- combined_dat_melted %>% drop_na()
 combined_dat$province <- factor(combined_dat$province, levels=combined_counts$province)
 
 ## Have a look at these variables over time
-p_other_data <- ggplot(combined_dat_melted) + 
+p_other_data <- ggplot(combined_dat_melted[combined_dat_melted$variable %in% c("date_onset_symptoms","date_infections"),]) + 
   geom_histogram(aes(x=value, fill=hubei),stat="count") +
   facet_wrap(~variable, ncol=1,scales="free_y") +
   theme_bw() +

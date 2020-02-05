@@ -35,7 +35,7 @@ sim_symp_full <- sim_symp_full %>% mutate(augmented = ifelse(individual=="augmen
 
 ## Tally infections per day with known symptom onset times
 sim_infections_symptoms <- sim_symp_full %>% group_by(repeat_no, date_infection) %>% tally()
-sim_infections_symptoms <- sim_infections_symptoms %>% mutate(symp_delay=as.numeric(date_today-date_infection))
+sim_infections_symptoms <- sim_infections_symptoms %>% mutate(symp_delay=as.numeric(date_today-date_infection)-1)
 
 ## Now combine with symptom onset probs to find proportion of infections on each day
 ## that have not experienced symptoms by now. Then, get number of additional infections

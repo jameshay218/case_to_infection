@@ -1,10 +1,12 @@
 ######################
 ## SETUP
-setwd("~/Documents/case_to_infection/")
-#setwd("~/GitHub/case_to_infection/")
+#setwd("~/Documents/case_to_infection/")
+setwd("~/GitHub/case_to_infection/")
 refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
+
+save_augmented_results <- FALSE
 
 library(ggplot2)
 library(tidyverse)
@@ -18,6 +20,7 @@ library(maps)
 library(data.table)
 library(googlesheets4)
 library(extraDistr)
+library(multidplyr)
 
 ## Some setup for STAN
 if(refit_p_confirm_delay && bayesian_p_confirm_delay) {
@@ -32,7 +35,7 @@ source("code/augmentation_functions.R")
 ## Need to be careful here - today's date needs to be
 ## the last day at which there are final case counts
 ## for that day
-date_today <- convert_date(Sys.Date())-1
+date_today <- convert_date("03.02.2020")
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 
@@ -46,7 +49,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 100
+repeats <- 2000
 
 #########################
 ## LOAD DATA
@@ -112,9 +115,8 @@ p_confirm_pre_arcgis
 ## arcgis data otherwise
 use_data_diff$country <- use_data_diff$country_region
 combined_dat_final <- merge_data(combined_dat, use_data_diff, switch_date="21.01.2020")
-combined_dat_final$ID <- 1:nrow(combined_dat_final)
-
 combined_dat_final <- combined_dat_final %>% filter(date_confirmation <= date_today)
+combined_dat_final$individual <- 1:nrow(combined_dat_final)
 
 source("code/fit_delay_distributions.R")
 
@@ -184,110 +186,12 @@ sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_onset_symptom
 ## Get table of probabilities that events have happened after certain delays
 if(!exists("all_probs_forward")) {
   all_probs_forward <- generate_forward_probabilities_dist(repeats, used_weibull_pars, 
-                                                         fit_kudos$par,tmax=ceiling(max(sim_data_all$total_delay)))
+                                                         fit_kudos$par,tmax=ceiling(max(sim_data_all$total_delay)+50))
 }
 confirm_probs <- all_probs_forward[[1]] %>% select(repeat_no, confirm_delay, cumu_prob_confirm)
 symptom_probs <- all_probs_forward[[2]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
 
-## How many symptom onsets do we have per day from confirmed cases?
-sim_symp_sum <- sim_data_all %>% group_by(repeat_no, date_onset_symptoms) %>% tally()
-colnames(sim_symp_sum)[2] <- "date"
-sim_symp_sum$var <- "date_onset_symptoms"
-sim_symp_sum <- sim_symp_sum %>% mutate(confirm_delay=as.numeric(date_today-date))
-
-## Need to inflate these, as only represent some proportion of actual symptom onsets based on how 
-## long ago this was
-sim_symp_sum <- sim_symp_sum %>% left_join(confirm_probs)
-sim_symp_sum <- sim_symp_sum %>% mutate(n_inflated=(rnbinom(n(), n, cumu_prob_confirm)))
-
-## Now we have true inflated symptom onsets. For each symptom onset, on top of the infection times
-## for the existing observed cases
-sim_symp_inflated <- sim_symp_sum %>% 
-  select(repeat_no, date, n_inflated, confirm_delay) %>%
-  group_by(date, repeat_no) %>% 
-  uncount(n_inflated)
-
-## Give each of these inflated symptom onsets an infection onset time
-sim_symp_inflated <- sim_symp_inflated %>% left_join(used_weibull_pars)
-sim_symp_inflated <- sim_symp_inflated %>% mutate(symp_delay = augment_infection_time_from_symp(alpha, sigma),
-                                                  date_infection = date - symp_delay,
-                                                  total_delay = symp_delay + confirm_delay,
-                                                  individual="augmented") %>%
-  select(repeat_no, date, confirm_delay, symp_delay, total_delay, date_infection, individual, alpha, sigma) %>%
-  ungroup()
-colnames(sim_symp_inflated)[2] <- "date_onset_symptoms"
-
-## Now combine inflated and actual symptom onsets
-## This is all cases with symptom onsets before today's date, inflated and observed
-sim_symp_full <- sim_data_all %>% mutate(individual = as.character(individual)) %>% 
-                                                    ungroup() %>%
-                                                    bind_rows(sim_symp_inflated)
-sim_symp_full <- sim_symp_full %>% mutate(augmented = ifelse(individual=="augmented",1,0))
-
-## Tally infections per day with known symptom onset times
-sim_infections_symptoms <- sim_symp_full %>% group_by(repeat_no, date_infection) %>% tally()
-sim_infections_symptoms <- sim_infections_symptoms %>% mutate(symp_delay=as.numeric(date_today-date_infection))
-
-## Now combine with symptom onset probs to find proportion of infections on each day
-## that have not experienced symptoms by now. Then, get number of additional infections
-## on each day that will not have experienced symptoms by now
-sim_infections_symptoms <- sim_infections_symptoms %>% left_join(symptom_probs)
-sim_infections_symptoms <- sim_infections_symptoms %>% mutate(n_inflated = rnbinom(n(), n, cumu_prob_symp))
-
-## Spell out so that each row is an inflated case with an infection time 
-## How many new infections roughly?
-range_new_infections <- sim_infections_symptoms %>%
-  group_by(repeat_no) %>% 
-  summarise(wow=sum(n_inflated)) %>% 
-  pull(wow) %>% quantile(c(0.025,0.5,0.975))
-## This many inflated infections (ie. upper and lower bound on unobserved infections)
-## IN ADDITION to unobserved symptom onsets
-print(range_new_infections)
-
-## Expand out so 1 row per inflated infection
-## This is inflated infections for each repeat
-sim_infections_symptoms_full <- sim_infections_symptoms %>% 
-  select(repeat_no, date_infection, n_inflated, symp_delay) %>%
-  group_by(date_infection, repeat_no) %>% 
-  uncount(n_inflated) %>%
-  mutate(individual="augmented_infection", augmented=1)
-
-## Now merge back with infections direct from symptom onset times
-final_infections <- sim_symp_full %>% 
-  select(repeat_no, individual, date_infection, symp_delay, augmented) %>%
-  bind_rows(sim_infections_symptoms_full)
-
-## Total number of infections now much more reasonable
-final_infections %>% group_by(repeat_no) %>% tally() %>% 
-  pull(n) %>% quantile(c(0,0.025,0.5,0.975,1))
-
-## Final number of symptom onsets
-final_symptom_onsets <- sim_symp_full
-
-
-## Get tallies to get bounds on infection and symptom onset numbers
-## Stratified by whether case was augmented or not and total
-final_infections_tally <- final_infections %>% 
-  group_by(repeat_no, date_infection, augmented) %>%
-  tally() %>% 
-  pivot_wider(names_from=augmented,values_from=n, values_fill=list(n=0), names_prefix="inflated") %>%
-  mutate(total=inflated0 + inflated1) %>% ungroup()
-final_infections_tally$var <- "date_infections"
-colnames(final_infections_tally)[2] <- "date"
-
-## Stratified by whether case was augmented or not
-final_symptom_onsets_tally<- final_symptom_onsets %>%
-  group_by(repeat_no, date_onset_symptoms, augmented) %>%
-  tally()  %>% 
-  pivot_wider(names_from=augmented,values_from=n, values_fill=list(n=0), names_prefix="inflated") %>%
-  mutate(total=inflated0 + inflated1) %>% ungroup()
-final_symptom_onsets_tally$var <- "date_onset_symptoms"
-colnames(final_symptom_onsets_tally)[2] <- "date"
-
-## Now get bounds on these
-final_all <- bind_rows(final_infections_tally, final_symptom_onsets_tally)
-final_all <- final_all %>% complete(repeat_no, var, date, fill=list(inflated0=0,inflated1=0, total=0))
-
+source("code/generate_inflations.R")
 
 ################################################
 ## OVERALL PLOT
@@ -337,30 +241,44 @@ thresholds <- times[sapply(threshold_vals, function(x) which(prop_seen > x)[1])]
 prop_symp_seen <- prop_sympt_observed_mean %>% pull(mean)
 thresholds_symp <- times[sapply(threshold_vals, function(x) which(prop_symp_seen > x)[1])]
 
-p <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
+p_result <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
                           ymax1=10000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
-png("tmp.png",height=10,width=10,res=300,units="in")
-p
+png("plots/main_plot.png",height=10,width=10,res=300,units="in")
+p_result
 dev.off()
 
 #########################
 ## FINAL HOUSEKEEPING
 ## Tidy up data to share
-n_subset <- 100
-all_repeats <- 1:repeats
-use_repeats <- sample(all_repeats, n_subset)
-final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
-colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
+if (save_augmented_results) {
+  n_subset <- 100
+  all_repeats <- 1:repeats
+  use_repeats <- sample(all_repeats, n_subset)
+  final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
+  colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
+  
+  final_infections_share <- final_infections %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
+    filter(repeat_no %in% use_repeats)
+  final_symptom_onsets_share <- final_symptom_onsets %>% select(repeat_no, individual, date_infection, 
+                                                                date_onset_symptoms, symp_delay, confirm_delay, total_delay, augmented) %>%
+    filter(repeat_no %in% use_repeats)
+  
+  write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
+  write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
+  write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
+  
+  ## Need to free some memory
+  rm(final_dat_to_share)
+  rm(final_symptom_onsets_share)
+  rm(final_infections_share)
+}
 
-final_infections_share <- final_infections %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
-  filter(repeat_no %in% use_repeats)
-final_symptom_onsets_share <- final_symptom_onsets %>% select(repeat_no, individual, date_infection, 
-                                                              date_onset_symptoms, symp_delay, confirm_delay, total_delay, augmented) %>%
-  filter(repeat_no %in% use_repeats)
-
-write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
-write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
-write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
+rm(sim_symp_full)
+rm(final_infections)
+rm(sim_symp_inflated)
+rm(sim_data_symptoms_melted)
+rm(sim_data_infections_melted)
+gc()
 
 ## Create results panel plot programmatically
 element_text_size <- 11
@@ -376,82 +294,55 @@ assumption_plot
 #######################
 ## SPATIAL PLOTS
 #######################
-individual_key <- combined_dat_final[,c("ID","age","country","sex","city","province","latitude","longitude")]
-colnames(individual_key)[1] <- "individual"
-sim_data_all <- as_tibble(sim_data_all)
-
-merged_data <- right_join(individual_key, sim_data_all,by=c("individual"))
-merged_data <- merged_data[!is.na(merged_data$date),]
-
-start_dates <- merged_data %>% group_by(var, province,repeat_no) %>% 
-  mutate(first_day=min(date)) %>% ungroup() %>% 
-  group_by(var, province) %>%
-  filter(var=="date_infection") 
-
-ggplot(start_dates) +
-  geom_histogram(aes(x=first_day)) + facet_wrap(~province,scales="free_y")
-
 #############################
 ## Aggregate by province
 ## Get confirmation time data
+## Shoved it in a script because it's long...
+gc()
+source("code/generate_byprovince_inflations.R")
+
+final_quantiles_province <- final_all_province %>% select(repeat_no, var, date, inflated0, total, province) %>% 
+  pivot_longer(cols=c("inflated0","total"),names_to="inflated") %>% 
+  group_by(date, var, inflated, province) %>% 
+  do(data.frame(t(c(quantile(.$value, probs = c(0.01,0.025,0.25,0.5,0.75,0.975,0.99),na.rm=TRUE),mean(.$value)))))
+
+
+colnames(final_quantiles_province) <- c("date","var","inflated","province",
+                                        "min","lower","midlow","median",
+                                        "midhigh","upper","max","mean")
+final_quantiles$var_full <- paste0(final_quantiles$var, "_", final_quantiles$inflated)
+
 confirm_dat_province <- combined_dat_final %>% ungroup() %>% filter(!is.na(combined_dat_final$date_confirmation)) %>% 
   group_by(province, date_confirmation) %>% tally() %>%
   ungroup() %>% complete(province, date_confirmation, fill=list(n=0))
 confirm_dat_province$Variable <- "Confirmed cases of infections that have been observed"
-
-## for each province, variable and sample,
-## Find the first date of an infection
-## Then, get the average across all repeats
-## Shift all dates so that this date is day 0
-#merged_data <- merged_data %>% 
-#  group_by(province, var, repeat_no) %>% 
-#  mutate(date = ifelse(date < convert_date("01.11.2019"),convert_date("01.11.2019"),date)) %>%
-#  mutate(start_day=min(date)) %>% ungroup() %>%
-#  group_by(province, var,repeat_no) %>%
-#  mutate(d_diff_mean=as.numeric(date - start_day))
+confirm_dat_province$inflated <- "total"
+confirm_dat_province$var <- "confirmed"
 
 
-
-province_data <- merged_data %>% 
-  group_by(repeat_no, var, date, province) %>%
-  tally() 
-
-province_data <- province_data %>% group_by(repeat_no, var, province) %>%
-  mutate(date_diff = as.numeric(date_today - date))
-province_data <- province_data %>% group_by(repeat_no, var, province) %>%
-  mutate(prop_observed = ifelse(var == "date_infection", cumsum(prop_seen)[date_diff], prop_confirmed[date_diff]),
-         n_inflated=floor(n/prop_observed))# %>%
-#select(-date_diff)
-province_data$n_inflated <- rnbinom(nrow(province_data), province_data$n, province_data$prop_observed) + province_data$n
-#sim_data_sum <- sim_data_sum %>% mutate(n_inflated = ifelse(var=="date_infection",n_inflated, n))
-province_data <- province_data %>% ungroup() %>% complete(repeat_no, var, date, province, fill=list(n=0,n_inflated=0,prop_observed=0))
-
-
-sim_data_quantiles_province <- province_data %>% group_by(date, var, province) %>% 
-  do(data.frame(t(quantile(.$n_inflated, probs = c(0.025,0.5,0.975),na.rm=TRUE))))
-
-sim_data_quantiles_province$var <- variable_key2[sim_data_quantiles_province$var]
-colnames(sim_data_quantiles_province) <- c("date","Variable","province","lower","median","upper")
 total_confirmed_prov <- confirm_dat_province %>% group_by(province) %>% summarise(n=sum(n))
 total_confirmed_prov <- total_confirmed_prov[order(-total_confirmed_prov$n),]
 factor_order <- as.character(total_confirmed_prov$province)
 
 confirm_dat_province$province <- factor(as.character(confirm_dat_province$province), 
                                          levels=factor_order)
-sim_data_quantiles_province$province <- factor(as.character(sim_data_quantiles_province$province), 
+final_quantiles_province$province <- factor(as.character(final_quantiles_province$province), 
                                                levels=factor_order)
 
-
-by_province <- plot_augmented_data_province(sim_data_quantiles_province, confirm_dat_province)
-top_6 <- factor_order[1:6]
-by_province_top6 <- plot_augmented_data_province(sim_data_quantiles_province[sim_data_quantiles_province$province %in% top_6,], 
-                                                 confirm_dat_province[confirm_dat_province$province %in% top_6,], max_date=date_today)
-by_province_top6 <- by_province_top6 + facet_wrap(~province, ncol=3, scales="free_y") + 
-  theme(legend.text=element_text(size=10))
-by_province_top6
+p_infections <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
+                                 confirmed_data_province=confirm_dat_province,
+                                 var_name="date_infections",max_date="03.02.2020",min_date="01.12.2019",
+                                 thresholds=NULL)
+p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
+                                                 confirmed_data_province=confirm_dat_province,
+                                                 var_name="date_onset_symptoms",max_date="03.02.2020",min_date="01.12.2019",
+                                                 cols=c("orange","red"),
+                                                 thresholds=NULL)
+p_infections
+p_symptoms
 
 ## Plot time from start
-p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
-p_start_delay_dist
+#p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
+#p_start_delay_dist
 
 # source("code/shifting_curves.R")

@@ -21,7 +21,8 @@ valid_date_end <- convert_date("01.01.2021")
 valid_dates <- valid_date_start:valid_date_end
 valid_dates <- convert_date(valid_dates)
 
-test_colnames <- c("date_onset_symptoms", "date_admission_hospital", "date_confirmation")
+test_colnames <- c("date_onset_symptoms", "date_admission_hospital", "date_confirmation",
+                   "date_death_or_discharge")
 
 all_failed_conversions <- NULL
 all_outside_range <- NULL
@@ -65,7 +66,8 @@ dput(unique(all_outside_range))
 ############################
 ## For this, only need some of the variables
 colnames(hubei_dat)
-hubei_dat <- hubei_dat %>% select(use_colnames)
+hubei_dat <- hubei_dat %>% select(c(use_colnames,"dead(0)/alive(1)","date_death_or_discharge"))
+colnames(hubei_dat)[which(colnames(hubei_dat) == "dead(0)/alive(1)")] <- "outcome"
 hubei_dat$age <- as.character(hubei_dat$age)
 #########
 ## Clean up dates
@@ -76,18 +78,20 @@ hubei_dat$age <- as.character(hubei_dat$age)
 hubei_dat$date_onset_symptoms <- clean_dates(hubei_dat$date_onset_symptoms)
 hubei_dat$date_admission_hospital <- clean_dates(hubei_dat$date_admission_hospital)
 hubei_dat$date_confirmation <- clean_dates(hubei_dat$date_confirmation)
+hubei_dat$date_death_or_discharge <- clean_dates(hubei_dat$date_death_or_discharge)
 
 ## Convert to dates and remove those cases without known symptom onsets
 hubei_dat$date_onset_symptoms <- convert_date(hubei_dat$date_onset_symptoms)
 hubei_dat$date_admission_hospital <- convert_date(hubei_dat$date_admission_hospital)
 hubei_dat$date_confirmation <- convert_date(hubei_dat$date_confirmation)
+hubei_dat$date_death_or_discharge <- convert_date(hubei_dat$date_death_or_discharge)
 hubei_dat$hubei <- 1
 
 ## NON HUBEI DATA
 #########
 other_dat$age <- as.character(other_dat$age)
 ## Clean up dates
-other_dat <- other_dat[,use_colnames]
+other_dat <- other_dat %>% select(c(use_colnames,"date_death_or_discharge"))
 #unique(other_dat$date_onset_symptoms)
 #unique(other_dat$date_admission_hospital)
 #unique(other_dat$date_confirmation)
@@ -95,15 +99,18 @@ other_dat <- other_dat[,use_colnames]
 other_dat$date_onset_symptoms <- clean_dates(other_dat$date_onset_symptoms)
 other_dat$date_admission_hospital <- clean_dates(other_dat$date_admission_hospital)
 other_dat$date_confirmation <- clean_dates(other_dat$date_confirmation)
+other_dat$date_death_or_discharge <- clean_dates(other_dat$date_death_or_discharge)
 
 ## Convert to dates and remove those cases without known symptom onsets
 other_dat$date_onset_symptoms <- convert_date(other_dat$date_onset_symptoms)
 other_dat$date_admission_hospital <- convert_date(other_dat$date_admission_hospital)
 other_dat$date_confirmation <- convert_date(other_dat$date_confirmation)
+other_dat$date_death_or_discharge <- convert_date(other_dat$date_death_or_discharge)
 other_dat$hubei <- 0
-
+other_dat$outcome <- NA
 
 combined_dat <- rbind(other_dat, hubei_dat)
+#combined_dat <- combined_dat %>% select(c(use_colnames, "hubei"))
 combined_dat$hubei <- as.factor(combined_dat$hubei)
 
 
@@ -125,7 +132,6 @@ factor_order <- all_confirmations %>% pull(country)
 combined_dat$country <- factor(combined_dat$country, levels=factor_order)
 
 china_dat <- combined_dat[combined_dat$country == "China",]
-print(paste0("Number of given confirmation dates from China (ie. max we can augment): ", nrow(china_dat[!is.na(china_dat$date_confirmation) | !is.na(china_dat$date_onset_symptoms),])))
 
 combined_dat_melted <- reshape2::melt(combined_dat, id.vars=key_colnames)
 
@@ -254,4 +260,26 @@ png("plots/linelist_hosp_delay_china.png",width=8,height=4,res=300,units="in")
 p_hosp_delay_china
 dev.off()
 
+##########################################
+## Get death delay distribution
+##########################################
+combined_dat$death_delay <- as.integer(combined_dat$date_death_or_discharge - combined_dat$date_onset_symptoms)
 
+## Look for any outliers
+combined_dat %>% filter(combined_dat$death_delay < 0)
+
+## Currently one person in China with negative hosp delay. Remove
+combined_dat <- combined_dat %>% mutate(death_delay = ifelse(death_delay < 0, NA, death_delay))
+
+
+## Death delay
+p_death_delay_distribution <- ggplot(combined_dat) +
+  geom_histogram(aes(x=death_delay,fill=hubei),stat="count",binwidth=1) +
+  scale_fill_manual(values=c("grey40","orange")) +
+  theme_bw() +
+  ggtitle("Death delay distribution") +
+  xlab("Days delay") + ylab("Count")
+
+png("plots/linelist_death_delay_dist.png",width=10,height=7,res=300,units="in")
+p_death_delay_distribution
+dev.off()

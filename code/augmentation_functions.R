@@ -8,10 +8,11 @@ generate_forward_probabilities_dist <- function(repeats, all_prob_parameters, tm
   #  mutate(cumu_prob_total=cumsum(total_prob_sum))
     
   delay_table <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax)
-  confirmation_delay_table <- all_delay_prob_parameters %>% select(repeat_no, gamma_scale, gamma_shape, date_confirmation) %>%
-    right_join(delay_table) %>% mutate(confirm_prob=ddgamma(confirm_delay-1, scale=gamma_scale, shape=gamma_shape)) %>%
-    arrange(repeat_no, date_confirmation, confirm_delay) %>%
-    group_by(repeat_no,date_confirmation) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob)) %>% ungroup()
+  confirmation_delay_table <- all_delay_prob_parameters %>% select(repeat_no, gamma_scale_forward, gamma_shape_forward, date_onset_symptoms) %>%
+    distinct() %>%
+    right_join(delay_table) %>% mutate(confirm_prob=ddgamma(confirm_delay-1, scale=gamma_scale_forward, shape=gamma_shape_forward)) %>%
+    arrange(repeat_no, confirm_delay, date_onset_symptoms) %>%
+    group_by(repeat_no,date_onset_symptoms) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob)) %>% ungroup()
   
   
   ## Make just final confirmation delay distribution
@@ -131,8 +132,8 @@ plot_augmented_events <- function(data_quantiles, confirmed_data,
                                       thresholds=NULL,
                                       cols=c("skyblue","blue"),
                                       title="Augmented and observed infection incidence against confirmed cases",
-                                      var_labels=c("95th percentile on observed and unobserved infections (estimates)",
-                                               "Number of infections from observed cases (estimates)"),bot=TRUE){
+                                      var_labels=c("95th percentile on daily estimated total infections",
+                                               "Daily estimated number of infections with a known confirmation date"),bot=TRUE){
   data_quantiles[data_quantiles$inflated == "total",c("median","mean")] <- NA
   data_quantiles$inflated <- factor(data_quantiles$inflated, levels=c("total","inflated0"))
   p <- ggplot(data_quantiles[data_quantiles$var == var_name,])
@@ -155,7 +156,7 @@ plot_augmented_events <- function(data_quantiles, confirmed_data,
     scale_x_date(limits=c(convert_date(min_date),convert_date(max_date)+1),
                  breaks="5 day") + 
     scale_fill_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), name="Variable",
-                      labels=c("Confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
+                      labels=c("Daily confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
     scale_color_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), guide="none") +
     ylab("Count") + xlab("Date of event") +
     theme_pubr()  +
@@ -181,8 +182,8 @@ plot_augmented_events_byprovince <- function(data_quantiles_province, confirmed_
                                   ncol=5,
                                   cols=c("skyblue","blue"),
                                   title="Augmented and observed infection incidence against confirmed cases",
-                                  var_labels=c("95th percentile on observed and unobserved infections (estimates)",
-                                               "Number of infections from observed cases (estimates)")){
+                                  var_labels=c("95th percentile on daily estimated total infections",
+                                               "Daily estimated number of infections with a known confirmation date")){
   data_quantiles_province[data_quantiles_province$inflated == "total",c("median","mean")] <- NA
   data_quantiles_province$inflated <- factor(data_quantiles_province$inflated, levels=c("total","inflated0"))
   data_quantiles_province <- data_quantiles_province %>% filter(province %in% provinces)
@@ -199,7 +200,7 @@ plot_augmented_events_byprovince <- function(data_quantiles_province, confirmed_
                  breaks="7 day") + 
     facet_wrap(~province, scales="free_y",ncol=ncol) +
     scale_fill_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), name="Variable",
-                      labels=c("Confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
+                      labels=c("Daily confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
     scale_color_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), guide="none") +
     ylab("Count") + xlab("Date of event") +
     theme_pubr()  +
@@ -224,10 +225,10 @@ plot_augmented_data <- function(data_quantiles, confirmed_data,
                                 thresholds_symp=NULL,
                                 title1 = "Augmented and observed timings of infection incidence in China",
                                 title2 = "Augmented and observed timings of symptom onset incidence in China",
-                                var_labels1=c("95th percentile on observed and yet-to-be\n observed infections (estimates)",
-                                             "Number of infections from observed cases (estimates)"),
-                                var_labels2=c("95th percentile on observed and yet-to-be\n observed symptom onsets (estimates)",
-                                             "Number of symptom onsets from observed cases (estimates)")){
+                                var_labels1=c("95th percentile on daily estimated total infections",
+                                             "Daily estimated number of infections with a known confirmation date"),
+                                var_labels2=c("95th percentile on daily estimated total symptom onsets",
+                                              "Daily estimated number of symptom onsets with a known confirmation date")){
 
   p1 <- plot_augmented_events(data_quantiles, confirmed_data, var_name="date_infections",
                               max_date, min_date, ymax1, ybreaks, thresholds, cols1, title1,

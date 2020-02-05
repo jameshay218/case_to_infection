@@ -6,7 +6,7 @@ refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirma
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
-use_geometric_confirmation_delay <- TRUE
+use_geometric_confirmation_delay <- FALSE
 
 save_augmented_results <- FALSE
 
@@ -143,8 +143,9 @@ assumption_plot
 p_sliding_delays_forward
 p_sliding_delays_backward
 
+## Fill up backward confirmation delay distribution to first confirmation date
 min_date <- min(combined_dat_final$date_confirmation)
-dates <- convert_date(min_date:(min(gamma_pars_dat$date_confirmation)-1))
+dates <- convert_date(min_date:(min(gamma_pars_dat_backward$date_confirmation)-1))
 gamma_mean_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_mean_backward)
 gamma_var_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_var_backward)
 gamma_pars_dat_backward <- gamma_pars_dat_backward %>% bind_rows(tibble(date_confirmation=dates, gamma_mean_backward=gamma_mean_use, 
@@ -221,7 +222,22 @@ sim_data_all <- left_join(sim_data_infections_melted, sim_data_symptoms_melted)
 ## Combine symptom onsets and infections and convert to dates
 sim_data_all$date_infection <- as.Date(floor(sim_data_all$date_infection), origin="1970-01-01")
 sim_data_all$date_onset_symptoms <- as.Date(floor(sim_data_all$date_onset_symptoms), origin="1970-01-01")
-sim_data_all <- left_join(sim_data_all, used_weibull_pars) %>% left_join(gamma_pars_dat)
+
+## Fill up FORWARD confirmation delay distribution to first confirmation date
+min_date <- min(sim_data_all$date_onset_symptoms)
+dates <- convert_date(min_date:(min(gamma_pars_dat_forward$date_onset_symptoms)-1))
+gamma_mean_use <- gamma_pars_dat_forward %>% filter(date_onset_symptoms == min(date_onset_symptoms)) %>% pull(gamma_mean_forward)
+gamma_var_use <- gamma_pars_dat_forward %>% filter(date_onset_symptoms == min(date_onset_symptoms)) %>% pull(gamma_var_forward)
+gamma_pars_dat_forward <- gamma_pars_dat_forward %>% bind_rows(tibble(date_onset_symptoms=dates, gamma_mean_forward=gamma_mean_use, 
+                                                                        gamma_var_forward=gamma_var_use, n_used=25,direction="forward")) %>% 
+  arrange(date_onset_symptoms) %>% as_tibble
+gamma_pars_dat_forward <- gamma_pars_dat_forward  %>% mutate(gamma_scale_forward=gamma_var_forward/gamma_mean_forward,
+                                                               gamma_shape_forward=gamma_mean_forward/gamma_scale_forward) %>%
+  select(-c("gamma_mean_forward","gamma_var_forward","direction"))
+
+
+## Get parameters for nowcasting stuff
+sim_data_all <- left_join(sim_data_all, used_weibull_pars) %>% left_join(gamma_pars_dat_forward)
 sim_data_all <- sim_data_all %>% mutate(fixed_geom=fit_kudos$par)
 
 ## Get delays for all augmented and actual events
@@ -230,14 +246,15 @@ sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_onset_symptom
                                         total_delay=symp_delay+confirm_delay)
 
 all_delay_prob_parameters <- sim_data_all %>% 
-  select(repeat_no, alpha, sigma, gamma_scale, gamma_shape, fixed_geom, date_confirmation) %>% 
+  select(repeat_no, alpha, sigma, gamma_scale_forward, gamma_shape_forward, fixed_geom, date_confirmation, date_onset_symptoms) %>% 
   distinct()
 
 ## Get table of probabilities that events have happened after certain delays
 if(!exists("all_probs_forward")) {
   all_probs_forward <- generate_forward_probabilities_dist(repeats, all_delay_prob_parameters, tmax=ceiling(max(sim_data_all$total_delay)+50))
 }
-confirm_probs_gamma <- all_probs_forward[[1]] %>% select(repeat_no, date_confirmation, confirm_delay, cumu_prob_confirm)
+confirm_probs_gamma <- all_probs_forward[[1]] %>% select(repeat_no, date_onset_symptoms, confirm_delay, cumu_prob_confirm)
+colnames(confirm_probs_gamma)[2] <- "date"
 confirm_probs_geometric <- all_probs_forward[[2]] %>% select(repeat_no, confirm_delay, cumu_prob_confirm)
 symptom_probs <- all_probs_forward[[3]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
 
@@ -303,11 +320,13 @@ thresholds_symp <- times[sapply(threshold_vals, function(x) which(prop_symp_seen
 p_result <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
                           ymax1=10000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 p_result_cumu <- plot_augmented_data(final_quantiles_cumulative, confirm_data_cumulative, max_date=date_today, min_date="15.12.2019",
-                                ymax1=100000,ymax2=50000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
+                                ymax1=50000,ymax2=50000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 png("plots/main_plot.png",height=10,width=10,res=300,units="in")
 p_result
 dev.off()
-
+png("plots/main_plot_cumu.png",height=10,width=10,res=300,units="in")
+p_result_cumu
+dev.off()
 
 
 rm(symptom_observed)

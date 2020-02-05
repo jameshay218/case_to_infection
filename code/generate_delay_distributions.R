@@ -7,6 +7,7 @@ dates <- date1:date2
 dates <- convert_date(dates)
 range(kudos_dat$delay,na.rm=TRUE)
 
+threshold <- 50
 
 ################################
 ## 1) PROBABILITIES GOING BACKWARD
@@ -19,8 +20,7 @@ number_confirmed <- kudos_dat %>% filter(delay > 0) %>% group_by(reporting_date)
 all_dat_backward <- NULL
 
 ## For each day, go back in time until the number of new confirmations in that period
-## is greater than x=20
-threshold <- 25
+## is greater than threshold
 first_date <- number_confirmed$reporting_date[which(cumsum(number_confirmed$n) > threshold)[1]]
 use_dates <- dates[dates > first_date]
 probs <- numeric(length(use_dates))
@@ -126,8 +126,7 @@ number_onsets <- kudos_dat %>% filter(delay > 0) %>% group_by(symptom_onset) %>%
 all_dat_forward <- NULL
 
 ## For each day, go back in time until the number of new symptom onsets in that period
-## is greater than x=25
-threshold <- 25
+## is greater than threshold
 first_date <- number_onsets$symptom_onset[which(cumsum(number_onsets$n) > threshold)[1]]
 use_dates <- dates[dates > first_date]
 probs <- numeric(length(use_dates))

@@ -6,7 +6,11 @@ symptom_observed <- symptom_observed %>% mutate(confirm_delay=as.numeric(date_to
 
 ## Need to inflate these, as only represent some proportion of actual symptom onsets based on how 
 ## long ago this was
-symptom_observed <- symptom_observed %>% left_join(confirm_probs)
+if (use_geometric_confirmation_delay) {
+  symptom_observed <- symptom_observed %>% left_join(confirm_probs_geometric)
+} else {
+  symptom_observed <- symptom_observed %>% left_join(confirm_probs_gamma)
+}
 symptom_observed <- symptom_observed %>% mutate(n_inflated=(rnbinom(n(), n, cumu_prob_confirm)))
 
 ## Now we have true inflated symptom onsets. For each symptom onset, on top of the infection times
@@ -39,7 +43,7 @@ infections_with_symptoms <- symptom_all %>% group_by(repeat_no, date_infection) 
 ## VERY IMPORTANT
 ## this is augmenting infections starting from the first day that we could observe symptom onsets for
 ## i.e. yesterday, as minimum 1 day confirmation delay here
-infections_with_symptoms <- infections_with_symptoms %>% mutate(symp_delay=as.numeric(date_today-date_infection)-minimum_confirmiation_delay)
+infections_with_symptoms <- infections_with_symptoms %>% mutate(symp_delay=as.numeric(date_today-date_infection)-minimum_confirmation_delay)
 ## **********************
 
 ## Now combine with symptom onset probs to find proportion of infections on each day

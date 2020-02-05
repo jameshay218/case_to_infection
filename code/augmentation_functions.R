@@ -1,6 +1,4 @@
-wow <- 1
-
-generate_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
+generate_forward_probabilities_dist <- function(repeats, all_prob_parameters, tmax=100){
   ## Make total confirmation delay distribution
   #ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 
   #  mutate(total_delay=confirm_delay+symp_delay) %>% full_join(weibull_pars) %>%
@@ -8,18 +6,31 @@ generate_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm
   #  group_by(total_delay, repeat_no) %>% summarise(total_prob_sum=sum(total_prob)) %>% ungroup() %>% 
   #  group_by(repeat_no) %>%
   #  mutate(cumu_prob_total=cumsum(total_prob_sum))
+    
+  delay_table <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax)
+  confirmation_delay_table <- all_delay_prob_parameters %>% select(repeat_no, gamma_scale, gamma_shape, date_confirmation) %>%
+    right_join(delay_table) %>% mutate(confirm_prob=ddgamma(confirm_delay-1, scale=gamma_scale, shape=gamma_shape)) %>%
+    arrange(repeat_no, date_confirmation, confirm_delay) %>%
+    group_by(repeat_no,date_confirmation) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob)) %>% ungroup()
+  
   
   ## Make just final confirmation delay distribution
-  confirm_delay <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax, p_confirm_delay=p_confirm_delay) %>%
-    mutate(confirm_prob=dgeom(confirm_delay-1,p_confirm_delay)) %>%
-    group_by(repeat_no) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob))
+  confirmation_delay_geometric <- all_delay_prob_parameters %>% select(repeat_no, fixed_geom) %>%
+    distinct() %>%
+    right_join(delay_table) %>%
+    mutate(confirm_prob=dgeom(confirm_delay-1,fixed_geom)) %>%
+    group_by(repeat_no) %>% mutate(cumu_prob_confirm=cumsum(confirm_prob)) %>% ungroup()
+  
+  symptom_delay_table <- expand_grid(repeat_no=1:repeats,symp_delay=0:tmax)
   
   ## Make just symptom onset delay distribution
-  symptom_delay <- expand_grid(repeat_no=1:repeats,symp_delay=0:tmax) %>% full_join(weibull_pars) %>%
+  symptom_delay <- all_delay_prob_parameters %>% select(repeat_no, alpha, sigma) %>% 
+    distinct() %>%
+    right_join(symptom_delay_table) %>%
     mutate(symp_prob=incubation_prob(symp_delay, alpha, sigma)) %>%
-    group_by(repeat_no) %>% mutate(cumu_prob_symp=cumsum(symp_prob))
+    group_by(repeat_no) %>% mutate(cumu_prob_symp=cumsum(symp_prob)) %>% ungroup()
   
-  return(list(confirm_delay, symptom_delay))
+  return(list(confirmation_delay_table, confirmation_delay_geometric, symptom_delay))
 }
 
 generate_total_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
@@ -57,22 +68,18 @@ generate_forward_probabilities <- function(alpha, sigma, p_confirm_delay,tmax=10
 }
 
 
-
-augment_infection_time_from_symp <- function(alpha, sigma){
-  floor(rweibull(1, alpha, sigma))
-}
-
 #' Augment infection times
-augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_confirm_delay=0.15, gamma_mean=NULL, gamma_var=NULL, minimum_confirmation_delay=1){
+augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_confirm_delay=0.15, minimum_confirmation_delay=1){
   ## Sim symptom onset times for those without
   which_to_sim <- which(is.na(dat$date_onset_symptoms) & !is.na(dat$date_confirmation))
   n_to_sim <- nrow(dat[which_to_sim,])
   
   ## From the provided geometric distribution + 1
-  if (!is.null(gamma_mean) & !is.null(gamma_var)){
-    sim_confirmation_delays <- ceiling(rgamma_mean(n_to_sim, gamma_mean, gamma_var)) + minimum_confirmation_delay
-  } else {
+  if(!is.null(p_confirm_delay)) {
     sim_confirmation_delays <- rgeom(n_to_sim, p_confirm_delay) + minimum_confirmation_delay
+  } else {
+    sim_confirmation_delays <- dat %>% mutate(confirmation_delay=rdgamma(n(), scale=gamma_scale_backward, shape=gamma_shape_backward)+1) %>% 
+      pull(confirmation_delay)
   }
   dat[which_to_sim,"date_onset_symptoms"] <- dat[which_to_sim,"date_confirmation"] - sim_confirmation_delays
   
@@ -156,15 +163,54 @@ plot_augmented_events <- function(data_quantiles, confirmed_data,
   if(bot) {
     p <- p +
     theme(axis.text.x=element_text(angle=45,hjust=1),
-          panel.grid.major = element_line(colour="grey70"),
+          panel.grid.major = element_line(colour="grey70",size=0.2),
           legend.position = c(0.3,0.6))
   } else {
     p <- p + theme(axis.text.x=element_blank(), axis.ticks.x=element_blank(), axis.title.x=element_blank(),
-                   panel.grid.major = element_line(colour="grey70"),
+                   panel.grid.major = element_line(colour="grey70",size=0.2),
                    legend.position = c(0.3,0.6))
   }
   p
 }
+
+plot_augmented_events_byprovince <- function(data_quantiles_province, confirmed_data_province, 
+                                             provinces=NULL,
+                                  var_name="date_infections",
+                                  max_date="01.02.2020",min_date="01.12.2019",
+                                  thresholds=NULL,
+                                  ncol=5,
+                                  cols=c("skyblue","blue"),
+                                  title="Augmented and observed infection incidence against confirmed cases",
+                                  var_labels=c("95th percentile on observed and unobserved infections (estimates)",
+                                               "Number of infections from observed cases (estimates)")){
+  data_quantiles_province[data_quantiles_province$inflated == "total",c("median","mean")] <- NA
+  data_quantiles_province$inflated <- factor(data_quantiles_province$inflated, levels=c("total","inflated0"))
+  data_quantiles_province <- data_quantiles_province %>% filter(province %in% provinces)
+  confirmed_data_province <- confirmed_data_province %>% filter(province %in% provinces)
+  
+  p <- ggplot(data_quantiles_province[data_quantiles_province$var == var_name,])
+  p <- p +
+    geom_bar(data=confirmed_data_province,aes(x=date_confirmation,y=n,fill=var),stat="identity",col="black", size=0.5) +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.4, size=0.5) +
+    geom_line(aes(x=date, y=median,col=inflated),size=0.5) +
+    scale_y_continuous(expand=c(0,0)) +
+    coord_cartesian(xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
+    scale_x_date(limits=c(convert_date(min_date),convert_date(max_date)+1),
+                 breaks="7 day") + 
+    facet_wrap(~province, scales="free_y",ncol=ncol) +
+    scale_fill_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), name="Variable",
+                      labels=c("Confirmed cases (reports to date)", var_labels[c(2,1)]))+ 
+    scale_color_manual(values= c("inflated0"=cols[2],"total"=cols[1],"confirmed"="grey40"), guide="none") +
+    ylab("Count") + xlab("Date of event") +
+    theme_pubr()  +
+    ggtitle(title) +
+      theme(axis.text.x=element_text(angle=45,hjust=1),
+            panel.grid.major = element_line(colour="grey70",size=0.2),
+            legend.position ="none")
+  p
+}
+
+
 
 plot_augmented_data <- function(data_quantiles, confirmed_data, 
                                 max_date="27.01.2020",
@@ -193,31 +239,8 @@ plot_augmented_data <- function(data_quantiles, confirmed_data,
   p1 / p2
 }
 
-plot_augmented_data_province <- function(data_quantiles_province, confirmed_data_province, max_date="27.01.2020"){
-  p <- ggplot(data_quantiles_province) +
-    geom_bar(data=confirmed_data_province,aes(x=date_confirmation,y=n,fill=Variable),stat="identity") +
-    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=Variable,col=Variable),alpha=0.25) +
-    geom_line(aes(x=date, y=median,col=Variable),size=1) +
-    scale_x_date(limits=c(convert_date("01.12.2019"),convert_date(max_date)),
-                 breaks="7 day") + 
-    scale_fill_manual(values=c("blue","grey40","orange")) + 
-    scale_color_manual(values=c("blue","orange"),guide="none") +
-    ggtitle("Augmented and observed timings of infection and symptom onset in China by province\n ordered by total confirmed cases") +
-    geom_hline(yintercept=0,linetype="dashed",col="grey80",size=0.5) +
-    ylab("Count") + xlab("Date of event") +
-    facet_wrap(~province, scales="free_y", ncol=5) +
-    theme_pubr() +
-    theme(axis.text.x=element_text(angle=45,hjust=1,size=12),
-          axis.text.y=element_text(size=12),
-          title=element_text(size=14),
-          strip.text = element_text(size=12),
-          legend.text=element_text(size=12),
-          legend.position = "bottom") 
-  p
-}
-
 expand_arcgis <- function(arcgis_dat) {
-  arcgis_dat %>% group_by(date_confirmation, province, country) %>% filter(n > 0) %>% drop_na() %>% uncount(n)
+  arcgis_dat %>% group_by(date_confirmation, province, country) %>% filter(n > 0) %>% drop_na() %>% uncount(n) %>% ungroup()
 }
 
 merge_data <- function(linelist_dat, arcgis_dat, switch_date){
@@ -228,17 +251,26 @@ merge_data <- function(linelist_dat, arcgis_dat, switch_date){
   arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(is.na(country), as.character(province), country))
   arcgis_dat <- arcgis_dat %>% filter(country == "China") %>% select(-country_region)
   arcgis_dat <- arcgis_dat %>% mutate(n = ifelse(n < 0, 0, n))
-  arcgis_dat <- expand_arcgis(arcgis_dat)
+  arcgis_dat <- expand_arcgis(arcgis_dat) %>% select(province,date_confirmation) %>% 
+    mutate(province = as.character(province))
+  arcgis_dat <- arcgis_dat %>% mutate(date_onset_symptoms=NA, 
+                                      date_death_or_discharge=NA,
+                                      date_admission_hospital=NA)
   
-  subset_combined_dat <- combined_dat %>% filter(date_confirmation <= convert_date(switch_date) & country == "China")
   
-  final <- bind_rows(arcgis_dat, subset_combined_dat) %>% arrange(province, date_confirmation)
+  subset_combined_dat <- linelist_dat %>% 
+    filter(date_confirmation <= convert_date(switch_date) & country == "China") %>%
+    select(province, date_confirmation,date_death_or_discharge,date_onset_symptoms,date_admission_hospital) %>%
+    mutate(province=as.character(province))
+  
+  final <- bind_rows(arcgis_dat, subset_combined_dat) %>% arrange(province, date_confirmation) %>% ungroup()
   final
 }
 
 
 #' simulate confirmation times
-simulate_confirmation_times <- function(date_onset_symptoms, p_confirm_delay=0.15, gamma_mean=NULL, gamma_var=NULL,minimum_confirmation_delay=1){
+simulate_confirmation_times <- function(date_onset_symptoms, p_confirm_delay=0.15, gamma_mean=NULL, gamma_var=NULL,
+                                        minimum_confirmation_delay=1){
   # start from symptom onset time for now
   ## From the provided geometric distribution + 1
   if (!is.null(gamma_mean) & !is.null(gamma_var)){
@@ -276,7 +308,7 @@ plot_forward_simulation <- function(data_quantiles, onset_data, max_date="27.01.
     ylab("Count") + xlab("Date of event") +
     theme_pubr() +
     theme(axis.text.x=element_text(angle=45,hjust=1),
-          panel.grid.major = element_line(colour="grey70"),
+          panel.grid.major = element_line(colour="grey70",size=0.2),
           legend.position = c(0.25,0.75)) 
   p
 }

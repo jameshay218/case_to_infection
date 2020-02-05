@@ -4,7 +4,7 @@
 individual_key <- combined_dat_final[,c("individual","province","date_confirmation")]
 sim_data_all <- as_tibble(sim_data_all)
 
-sim_data_all_province <- right_join(individual_key, sim_data_all,by=c("individual"))
+sim_data_all_province <- right_join(individual_key, sim_data_all,by=c("individual","date_confirmation"))
 sim_data_all_province <- sim_data_all_province %>% filter(!is.na(date_confirmation))
 sim_data_all_province <- sim_data_all_province %>% select(individual, province, date_confirmation, 
                                       repeat_no, date_infection, date_onset_symptoms,
@@ -25,7 +25,11 @@ symptom_observed_province <- symptom_observed_province %>% mutate(confirm_delay=
 
 ## Need to inflate these, as only represent some proportion of actual symptom onsets based on how 
 ## long ago this was
-symptom_observed_province <- symptom_observed_province %>% left_join(confirm_probs)
+if (use_geometric_confirmation_delay) {
+  symptom_observed_province <- symptom_observed_province %>% left_join(confirm_probs_geometric)
+} else {
+  symptom_observed_province <- symptom_observed_province %>% left_join(confirm_probs_gamma)
+}
 symptom_observed_province <- symptom_observed_province %>% ungroup() %>% 
   group_by(province) %>% partition(cluster) 
 symptom_observed_province <- symptom_observed_province %>%

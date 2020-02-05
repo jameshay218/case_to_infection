@@ -6,6 +6,8 @@ refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirma
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
+use_geometric_confirmation_delay <- TRUE
+
 save_augmented_results <- FALSE
 
 library(ggplot2)
@@ -39,10 +41,10 @@ source("code/augmentation_functions.R")
 ## Need to be careful here - today's date needs to be
 ## the last day at which there are final case counts
 ## for that day
-date_today <- convert_date("03.02.2020")
+date_today <- convert_date("04.02.2020")
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
-minimum_confirmiation_delay <- 1
+minimum_confirmation_delay <- 1
 ## source("code/plot_china_map.R")
 
 ## These column names will be kept as keys for the rest of the analysis
@@ -53,7 +55,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 1000
+repeats <- 100
 
 #########################
 ## LOAD DATA
@@ -126,6 +128,7 @@ combined_dat_final <- combined_dat_final %>% filter(date_confirmation <= date_to
 combined_dat_final$individual <- 1:nrow(combined_dat_final)
 
 source("code/fit_delay_distributions.R")
+source("code/generate_delay_distributions.R")
 ## Create results panel plot programmatically
 element_text_size <- 11
 text_size_theme <- theme(title=element_text(size=element_text_size), 
@@ -137,12 +140,26 @@ p_confirm_delay_kudos <- p_confirm_delay_kudos + text_size_theme
 assumption_plot <- p_incubation1 / p_confirm_delay_kudos
 assumption_plot
 
+p_sliding_delays_forward
+p_sliding_delays_backward
+
+min_date <- min(combined_dat_final$date_confirmation)
+dates <- convert_date(min_date:(min(gamma_pars_dat$date_confirmation)-1))
+gamma_mean_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_mean_backward)
+gamma_var_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_var_backward)
+gamma_pars_dat_backward <- gamma_pars_dat_backward %>% bind_rows(tibble(date_confirmation=dates, gamma_mean_backward=gamma_mean_use, 
+                                                       gamma_var_backward=gamma_var_use, n_used=25)) %>% arrange(date_confirmation) %>% as_tibble
+gamma_pars_dat_backward <- gamma_pars_dat_backward  %>% mutate(gamma_scale_backward=gamma_var_backward/gamma_mean_backward,
+                                             gamma_shape_backward=gamma_mean_backward/gamma_scale_backward) %>%
+  select(-c("gamma_mean_backward","gamma_var_backward"))
+combined_dat_final <- combined_dat_final %>% left_join(gamma_pars_dat_backward)
+
 #############################
 ## FULL AUGMENTATION
 #############################
 ## Now let's repeat this process many times to get a distribution
-sim_data_infections <- matrix(NA, nrow=repeats, ncol=nrow(combined_dat_final))
-sim_data_symptoms <- matrix(NA, nrow=repeats, ncol=nrow(combined_dat_final))
+sim_data_infections <- matrix(NA, ncol=repeats, nrow=nrow(combined_dat_final))
+sim_data_symptoms <- matrix(NA, ncol=repeats, nrow=nrow(combined_dat_final))
 augmentation_tracker <- NULL
 
 ## For each sample, draw a Weibull distribution from the posterior for 
@@ -152,25 +169,28 @@ for(i in seq_len(repeats)){
   incu_period_rand <- weibull_stan_draws[sample(seq_len(nrow(weibull_stan_draws)),1),]
   alpha <- incu_period_rand$alpha
   sigma <- incu_period_rand$sigma
-  # sample from posterior if bayesian
-  if(bayesian_p_confirm_delay) {
-    p_confirm_delay <- sample(fit_kudos$par,1)
-  } else {
-    # use point estimate if frequentist
-    p_confirm_delay <- fit_kudos$par
-  }
   
+  p_confirm_delay <- NULL
+  # sample from posterior if bayesian
+  if(use_geometric_confirmation_delay) {
+    if(bayesian_p_confirm_delay) {
+      p_confirm_delay <- sample(fit_kudos$par,1)
+    } else {
+      # use point estimate if frequentist
+      p_confirm_delay <- fit_kudos$par
+    }
+  } 
+    
   ## Get symptom onset and infection times
   tmp <- augment_infection_times(combined_dat_final, 
                                  inc_period_alpha=alpha, 
                                  inc_period_sigma=sigma, 
-                                 gamma_mean=NULL,
-                                 gamma_var=NULL,
-                                 p_confirm_delay=fit_kudos$par,
-                                 minimum_confirmiation_delay)
-  
-  sim_data_infections[i,] <- tmp$augmented_infection_times
-  sim_data_symptoms[i,] <- tmp$augmented_symptom_onsets
+                                 p_confirm_delay=p_confirm_delay,
+                                 minimum_confirmation_delay)
+  data_date_confirmation <- combined_dat_final$date_confirmation
+  individuals <- combined_dat_final$individual
+  sim_data_infections[,i] <- tmp$augmented_infection_times
+  sim_data_symptoms[,i] <- tmp$augmented_symptom_onsets
   ## Keep track of which incubation period parameters we used
   augmentation_tracker[[i]] <- c(i,incu_period_rand$alpha, incu_period_rand$sigma)
 }
@@ -181,33 +201,45 @@ for(i in seq_len(repeats)){
 used_weibull_pars <- as_tibble(do.call("rbind", augmentation_tracker))
 colnames(used_weibull_pars) <- c("repeat_no","alpha","sigma")
 
-sim_data_infections_melted <- as_tibble(reshape2::melt(sim_data_infections))
-sim_data_symptoms_melted <- as_tibble(reshape2::melt(sim_data_symptoms))
+sim_data_infections <- data.frame(sim_data_infections)
+sim_data_infections$individual <- individuals
+sim_data_infections$date_confirmation <- data_date_confirmation
 
-sim_data_infections_melted$var <- "date_infection"
-sim_data_symptoms_melted$var <- "date_onset_symptoms"
+sim_data_symptoms <- data.frame(sim_data_symptoms)
+sim_data_symptoms$individual <- individuals
+sim_data_symptoms$date_confirmation <- data_date_confirmation
 
-colnames(sim_data_infections_melted) <- colnames(sim_data_symptoms_melted) <- c("repeat_no","individual","date","var")
+sim_data_infections_melted <- as_tibble(sim_data_infections) %>% 
+  pivot_longer(-c("date_confirmation", "individual"), names_to="repeat_no",values_to="date_infection") %>%
+  mutate(repeat_no=match(repeat_no, repeat_no))
+sim_data_symptoms_melted <-as_tibble(sim_data_symptoms) %>% 
+  pivot_longer(-c("date_confirmation", "individual"), names_to="repeat_no",values_to="date_onset_symptoms") %>%
+  mutate(repeat_no=match(repeat_no, repeat_no))
+
+sim_data_all <- left_join(sim_data_infections_melted, sim_data_symptoms_melted)
 
 ## Combine symptom onsets and infections and convert to dates
-sim_data_all <- rbind(sim_data_infections_melted, sim_data_symptoms_melted)
-sim_data_all$date <- as.Date(floor(sim_data_all$date), origin="1970-01-01")
-sim_data_all <- as_tibble(sim_data_all)
-sim_data_all <- sim_data_all %>% pivot_wider(values_from=date,names_from=var)
-sim_data_all <- left_join(sim_data_all, used_weibull_pars)
+sim_data_all$date_infection <- as.Date(floor(sim_data_all$date_infection), origin="1970-01-01")
+sim_data_all$date_onset_symptoms <- as.Date(floor(sim_data_all$date_onset_symptoms), origin="1970-01-01")
+sim_data_all <- left_join(sim_data_all, used_weibull_pars) %>% left_join(gamma_pars_dat)
+sim_data_all <- sim_data_all %>% mutate(fixed_geom=fit_kudos$par)
 
 ## Get delays for all augmented and actual events
 sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_onset_symptoms-date_infection),
                                         confirm_delay=as.numeric(date_today-date_onset_symptoms),
                                         total_delay=symp_delay+confirm_delay)
 
+all_delay_prob_parameters <- sim_data_all %>% 
+  select(repeat_no, alpha, sigma, gamma_scale, gamma_shape, fixed_geom, date_confirmation) %>% 
+  distinct()
+
 ## Get table of probabilities that events have happened after certain delays
 if(!exists("all_probs_forward")) {
-  all_probs_forward <- generate_forward_probabilities_dist(repeats, used_weibull_pars, 
-                                                         fit_kudos$par,tmax=ceiling(max(sim_data_all$total_delay)+50))
+  all_probs_forward <- generate_forward_probabilities_dist(repeats, all_delay_prob_parameters, tmax=ceiling(max(sim_data_all$total_delay)+50))
 }
-confirm_probs <- all_probs_forward[[1]] %>% select(repeat_no, confirm_delay, cumu_prob_confirm)
-symptom_probs <- all_probs_forward[[2]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
+confirm_probs_gamma <- all_probs_forward[[1]] %>% select(repeat_no, date_confirmation, confirm_delay, cumu_prob_confirm)
+confirm_probs_geometric <- all_probs_forward[[2]] %>% select(repeat_no, confirm_delay, cumu_prob_confirm)
+symptom_probs <- all_probs_forward[[3]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
 
 source("code/generate_inflations.R")
 
@@ -220,16 +252,36 @@ final_quantiles <- final_all %>% select(repeat_no, var, date, inflated0, total) 
   do(data.frame(t(c(quantile(.$value, probs = c(0.01,0.025,0.25,0.5,0.75,0.975,0.99),na.rm=TRUE),mean(.$value)))))
 colnames(final_quantiles) <- c("date","var","inflated",
                                "min","lower","midlow","median","midhigh","upper","max","mean")
-
 ## Get confirmation time data
 confirm_data <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% group_by(date_confirmation) %>% tally()
 confirm_data$inflated <- "total"
 confirm_data$var <- "confirmed"
 
+## Get the same but cumulative
+final_all_cumulative <- final_all %>% group_by(repeat_no, var) %>% arrange(repeat_no, var, date) %>% 
+  mutate(cumu_observed=cumsum(inflated0),
+         cumu_unobserved=cumsum(inflated1),
+         cumu_total=cumsum(total)) %>% ungroup()
+final_quantiles_cumulative <- final_all_cumulative %>% select(repeat_no, var, date, cumu_observed, cumu_total) %>% 
+  pivot_longer(cols=c("cumu_observed","cumu_total"),names_to="inflated") %>% 
+  group_by(date, var, inflated) %>% 
+  do(data.frame(t(c(quantile(.$value, probs = c(0.01,0.025,0.25,0.5,0.75,0.975,0.99),na.rm=TRUE),mean(.$value)))))
+colnames(final_quantiles_cumulative) <- c("date","var","inflated",
+                               "min","lower","midlow","median","midhigh","upper","max","mean")
+change_key <- c("cumu_observed"="inflated0", "cumu_total"="total")
+final_quantiles_cumulative$inflated <- change_key[final_quantiles_cumulative$inflated]
+
+## Get confirmation time data
+confirm_data_cumulative <- combined_dat_final %>% filter(!is.na(date_confirmation)) %>% 
+  group_by(date_confirmation) %>% tally() %>% mutate(n=cumsum(n)) %>% ungroup()
+confirm_data_cumulative$inflated <- "total"
+confirm_data_cumulative$var <- "confirmed"
+
+
 ## Get vertical dashes to show confirmation proportions over time
 prop_seen <- generate_total_forward_probabilities_dist(repeats, used_weibull_pars, fit_kudos$par, 200)
 prop_seen_mean <- prop_seen %>% group_by(total_delay) %>% summarise(mean=mean(cumu_prob_total))
-prop_sympt_observed_mean <- confirm_probs %>% group_by(confirm_delay) %>% summarise(mean=mean(cumu_prob_confirm))
+prop_sympt_observed_mean <- confirm_probs_geometric %>% group_by(confirm_delay) %>% summarise(mean=mean(cumu_prob_confirm))
 
 ###################################################
 ## GET PROPORTION OBSERVED BY DATE OF INFECTION
@@ -250,35 +302,13 @@ thresholds_symp <- times[sapply(threshold_vals, function(x) which(prop_symp_seen
 
 p_result <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
                           ymax1=10000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
+p_result_cumu <- plot_augmented_data(final_quantiles_cumulative, confirm_data_cumulative, max_date=date_today, min_date="15.12.2019",
+                                ymax1=100000,ymax2=50000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 png("plots/main_plot.png",height=10,width=10,res=300,units="in")
 p_result
 dev.off()
 
-#########################
-## FINAL HOUSEKEEPING
-## Tidy up data to share
-if (save_augmented_results) {
-  n_subset <- 100
-  all_repeats <- 1:repeats
-  use_repeats <- sample(all_repeats, n_subset)
-  final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
-  colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
-  
-  final_infections_share <- final_infections %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
-    filter(repeat_no %in% use_repeats)
-  final_symptom_onsets_share <- final_symptom_onsets %>% select(repeat_no, individual, date_infection, 
-                                                                date_onset_symptoms, symp_delay, confirm_delay, total_delay, augmented) %>%
-    filter(repeat_no %in% use_repeats)
-  
-  write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
-  write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
-  write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
-  
-  ## Need to free some memory
-  rm(final_dat_to_share)
-  rm(final_symptom_onsets_share)
-  rm(final_infections_share)
-}
+
 
 rm(symptom_observed)
 rm(symptom_unobserved)
@@ -325,17 +355,20 @@ confirm_dat_province$province <- factor(as.character(confirm_dat_province$provin
                                          levels=factor_order)
 final_quantiles_province$province <- factor(as.character(final_quantiles_province$province), 
                                                levels=factor_order)
+top_6_provinces <- factor_order[1:6]
 
 p_infections <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                  confirmed_data_province=confirm_dat_province,
+                                 provinces = top_6_provinces,
                                  var_name="date_infections",max_date="03.02.2020",min_date="01.12.2019",
-                                 thresholds=NULL)
+                                 thresholds=NULL,ncol=3)
 p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                                  confirmed_data_province=confirm_dat_province,
+                                               provinces=top_6_provinces,
                                                  var_name="date_onset_symptoms",max_date="03.02.2020",min_date="01.12.2019",
                                                  cols=c("orange","red"),
-                                                 thresholds=NULL)
-png("plots/infections_by_province.png",height=12,width=12,units="in",res=300)
+                                                 thresholds=NULL, ncol=3)
+png("plots/infections_by_province.png",height=6,width=12,units="in",res=300)
 p_infections
 dev.off()
 p_symptoms
@@ -344,4 +377,36 @@ p_symptoms
 #p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
 #p_start_delay_dist
 
-# source("code/shifting_curves.R")
+source("code/shifting_curves.R")
+
+
+#########################
+## FINAL HOUSEKEEPING
+## Tidy up data to share
+if (save_augmented_results) {
+  n_subset <- 100
+  all_repeats <- 1:repeats
+  use_repeats <- sample(all_repeats, n_subset)
+  final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
+  colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
+  
+  final_infections_share <- infections_all %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
+    filter(repeat_no %in% use_repeats)
+  final_symptom_onsets_share <- symptom_all %>% select(repeat_no, individual, date_infection, 
+                                                       date_onset_symptoms, symp_delay, confirm_delay, total_delay, augmented) %>%
+    filter(repeat_no %in% use_repeats)
+  
+  write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
+  write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
+  write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
+  
+  ## Need to free some memory
+  rm(final_dat_to_share)
+  rm(final_symptom_onsets_share)
+  rm(final_infections_share)
+  
+  final_dat_to_share_province <- final_all_province %>% filter(repeat_no %in% use_repeats)
+  colnames(final_dat_to_share_province) <- c("repeat_no","variable","date","province","from_confirmed","inflated_event","total_events")
+  
+  write_csv(final_dat_to_share_province, path="augmented_data/augmented_totals_by_province.csv")
+}

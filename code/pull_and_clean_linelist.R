@@ -196,8 +196,8 @@ combined_dat$confirmation_delay <- as.integer(combined_dat$date_confirmation - c
 combined_dat$hospitalisation_delay <- as.integer(combined_dat$date_admission_hospital - combined_dat$date_onset_symptoms)
 
 ## Look for any outliers
-combined_dat %>% filter(combined_dat$confirmation_delay < 0)
-combined_dat %>% filter(combined_dat$hospitalisation_delay < 0)
+combined_dat %>% filter(combined_dat$confirmation_delay < 0) %>% select(-c("latitude","longitude","city","sex"))
+combined_dat %>% filter(combined_dat$hospitalisation_delay < 0) %>% select(-c("latitude","longitude","city","sex"))
 
 ## Currently one person in China with negative hosp delay. Remove
 combined_dat <- combined_dat %>% mutate(hospitalisation_delay = ifelse(hospitalisation_delay < 0, NA, hospitalisation_delay))

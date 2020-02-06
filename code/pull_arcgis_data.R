@@ -1,3 +1,5 @@
+USE_FIX <- TRUE
+
 ## Pull latest cumulative incidence data from arcgis
 url <- "https://docs.google.com/spreadsheets/d/1wQVypefm946ch4XDp37uZ-wartW4V7ILdg-qYiDXUHM/htmlview?usp=sharing&sle=true#"
 available_dates <- sheets_sheets(url)
@@ -39,6 +41,37 @@ for(date in available_dates) {
   all_data <- bind_rows(all_data, tmp_dat)
   all_data_list[[date]] <- tmp_dat
 }
+
+
+###################
+## TEMPORARY FIX - LATE JAN 31ST MISSING
+## USING TIME SERIES DATA
+if(USE_FIX) {
+  url_timeseries <- "https://docs.google.com/spreadsheets/d/1UF2pSkFTURko2OvfHWWlFpDFAr1UxCBA4JLwlSP6KFo/htmlview?usp=sharing&sle=true"
+  all_dat_timeseries <- read_sheet(ss=url_timeseries)
+  all_dat_timeseries <- all_dat_timeseries %>% select(`Province/State`,`Country/Region`,`1/31/2020 7:00 PM`)
+  colnames(all_dat_timeseries) <- c("province","country_region","confirmed")
+  
+  deaths <- read_sheet(ss=url_timeseries,sheet = "Death")
+  deaths <- deaths %>% select(`Province/State`,`Country/Region`,`1/31/2020 7:00 PM`)
+  colnames(deaths) <- c("province","country_region","deaths")
+  
+  #recovered <- read_sheet(ss=url_timeseries,sheet = "Recovered")
+  #recovered <- recovered %>% select(`Province/State`,`Country/Region`,`1/31/2020 7:00 PM`)
+  #colnames(recovered) <- c("province","country_region","recovered")
+  
+  all_dat_timeseries <- all_dat_timeseries %>% left_join(deaths)# %>% left_join(recovered)
+  
+  all_dat_timeseries$recovered <- 0
+  all_dat_timeseries$updated <- as.POSIXct("2020-01-31 19:00:00 UTC", format="%Y-%m-%d %H:%M:%OS")
+  all_dat_timeseries$report_date <- "Jan31_7pm"
+  
+  all_data <- bind_rows(all_data, all_dat_timeseries)
+  all_data_list[["Jan31_7pm"]] <- all_dat_timeseries
+}
+##################
+
+
 use_data <- all_data
 use_data$report_date <- convert_datestring_to_date(use_data$report_date)
 

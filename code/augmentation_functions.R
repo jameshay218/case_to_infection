@@ -34,14 +34,58 @@ generate_forward_probabilities_dist <- function(repeats, all_prob_parameters, tm
   return(list(confirmation_delay_table, confirmation_delay_geometric, symptom_delay))
 }
 
-generate_total_forward_probabilities_dist <- function(repeats, weibull_pars, p_confirm_delay, tmax=100){
+generate_total_forward_probabilities_dist <- function(repeats, all_prob_parameters, tmax=100, 
+                                                      use_geometric_confirmation_delay1=TRUE){
+  all_prob_parameters_tmp <- all_prob_parameters %>% select(-date_confirmation) %>% distinct()
+  
   ## Make total confirmation delay distribution
-  ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 
-    mutate(total_delay=confirm_delay+symp_delay) %>% full_join(weibull_pars) %>%
-    mutate(total_prob=forward_prob_total(symp_delay, confirm_delay, alpha, sigma, p_confirm_delay)) %>%
-    group_by(total_delay, repeat_no) %>% summarise(total_prob_sum=sum(total_prob)) %>% ungroup() %>% 
-    group_by(repeat_no) %>%
-    mutate(cumu_prob_total=cumsum(total_prob_sum))
+  if(use_geometric_confirmation_delay1) {
+    all_prob_parameters_tmp <- all_prob_parameters_tmp %>% select(repeat_no, alpha, sigma, fixed_geom) %>% distinct()
+    ret <- expand_grid(repeat_no=1:repeats,confirm_delay=0:tmax,symp_delay=0:tmax) %>% 
+      mutate(total_delay=confirm_delay+symp_delay) %>% full_join(all_prob_parameters_tmp) %>%
+      mutate(total_prob=(pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma))*dgeom(confirm_delay-1, fixed_geom)) %>%
+      group_by(total_delay, repeat_no) %>% summarise(total_prob_sum=sum(total_prob)) %>% ungroup() %>% 
+      group_by(repeat_no) %>%
+      mutate(cumu_prob_total=cumsum(total_prob_sum))
+    ret <- ret %>% group_by(total_delay) %>% summarise(cumu_prob_total=mean(cumu_prob_total))
+  } else {
+    ## Confirmation delay probabilities stratified by symptom onset
+    ## Get all ways of going from an infection time to the future
+    all_prob_parameters_tmp_confirm <- all_prob_parameters_tmp %>% 
+      select(gamma_scale_forward, gamma_shape_forward, date_onset_symptoms) %>% 
+      distinct()
+    tmax <- max(all_prob_parameters$date_confirmation) - convert_date("01.12.2019")
+    unique_infection_times <- convert_date(convert_date("01.12.2019"):(max(all_prob_parameters$date_confirmation)-1))
+    ## Get confirmation delays from each symptom onset date
+    all_delay_combinations <- tibble(date_infection=unique_infection_times) %>%
+      mutate(tmax=as.numeric(max(unique_infection_times)-date_infection)) %>% uncount(tmax) %>% 
+      group_by(date_infection) %>% mutate(total_delay=1:n()) %>% ungroup()
+      
+    all_delay_combs <- expand_grid(confirm_delay=0:tmax, symp_delay=0:tmax)
+    all_delay_combs <- all_delay_combs %>% mutate(total_delay = confirm_delay + symp_delay)
+    all_delay_combinations <- all_delay_combinations %>% left_join(all_delay_combs)
+    all_delay_combinations <- all_delay_combinations %>% mutate(date_onset_symptoms=date_infection+symp_delay)
+    all_delay_combinations <- all_delay_combinations %>% left_join(all_prob_parameters_tmp_confirm)
+    all_delay_combinations <- all_delay_combinations %>% mutate(confirm_prob=ddgamma(confirm_delay-1, scale=gamma_scale_forward, shape=gamma_shape_forward)) %>%
+      ungroup()
+    
+    symp_delay_table <- expand_grid(repeat_no=1:repeats,symp_delay=0:tmax)
+    symp_delay_table <- all_prob_parameters_tmp %>% select(repeat_no, alpha, sigma) %>%
+      distinct() %>%
+      right_join(symp_delay_table) %>% 
+      mutate(symp_prob1=incubation_prob(symp_delay, alpha, sigma)) %>% 
+      group_by(symp_delay) %>%
+      summarise(symp_prob=mean(symp_prob1))
+    
+    all_delay_combinations <- all_delay_combinations %>% left_join(symp_delay_table)
+    
+    ret <- all_delay_combinations %>% mutate(total_prob = confirm_prob*symp_prob) %>% 
+      arrange(date_infection, total_delay, symp_delay, confirm_delay) %>% 
+      group_by(date_infection, total_delay) %>%
+      summarise(total_prob_sum = sum(total_prob)) %>% ungroup() %>%
+      group_by(date_infection) %>% arrange(total_delay) %>%
+      mutate(cumu_prob_total=cumsum(total_prob_sum)) %>% ungroup()
+  }
   
   return(ret)
 }
@@ -50,8 +94,8 @@ generate_total_forward_probabilities_dist <- function(repeats, weibull_pars, p_c
 incubation_prob  <- function(symp_delay, alpha, sigma){
   pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma)
 }
-forward_prob_total <- function(symp_delay, confirm_delay, alpha, sigma, p_confim_delay){
-  (pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma))*dgeom(confirm_delay-1, p_confirm_delay)
+forward_prob_total <- function(symp_delay, confirm_delay, alpha, sigma, p_geom){
+  (pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma))*dgeom(confirm_delay-1, p_geom)
   
 }
 
@@ -75,11 +119,16 @@ augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_c
   which_to_sim <- which(is.na(dat$date_onset_symptoms) & !is.na(dat$date_confirmation))
   n_to_sim <- nrow(dat[which_to_sim,])
   
+  ############################################################
+  ## AUGMENTING SYMPTOM ONSET TIMES FROM CONFIRMATION DATES
+  ############################################################
   ## From the provided geometric distribution + 1
   if(!is.null(p_confirm_delay)) {
+    ## Draw from geometric distribution shifted to the right by minimum_confirmation_delay days
     sim_confirmation_delays <- rgeom(n_to_sim, p_confirm_delay) + minimum_confirmation_delay
   } else {
-    sim_confirmation_delays <- dat %>% mutate(confirmation_delay=rdgamma(n(), scale=gamma_scale_backward, shape=gamma_shape_backward)+1) %>% 
+    ## Draw from discretised gamma shifted to the right by minimum_confirmation_delay days
+    sim_confirmation_delays <- dat %>% mutate(confirmation_delay=rdgamma(n(), scale=gamma_scale_backward, shape=gamma_shape_backward) + minimum_confirmation_delay) %>% 
       pull(confirmation_delay)
   }
   dat[which_to_sim,"date_onset_symptoms"] <- dat[which_to_sim,"date_confirmation"] - sim_confirmation_delays
@@ -90,9 +139,14 @@ augment_infection_times <- function(dat, inc_period_alpha, inc_period_sigma, p_c
   ## sim_incubation_times <- rgamma_mean(nrow(other_dat_china[which_to_sim_infection,]), mean_incubation, var_incubation)
   
   ## New
-  sim_incubation_times <- rweibull(nrow(dat[which_to_sim_infection,]), alpha, sigma)
+  ############################################################
+  ## AUGMENTING INFECTION ONSET TIMES FROM SYMPTOM ONSETS
+  ############################################################
+  ## Draw from weibull distribution, but taken as floor value \
+  ## (ie. if you get symptoms after less than a day, you'll be captured in that day)
+  sim_incubation_times <- floor(rweibull(nrow(dat[which_to_sim_infection,]), alpha, sigma))
   dat$date_infection <- dat$date_onset_symptoms
-  dat[which_to_sim_infection,"date_infection"] <- dat[which_to_sim_infection,"date_onset_symptoms"] - floor(sim_incubation_times)
+  dat[which_to_sim_infection,"date_infection"] <- dat[which_to_sim_infection,"date_onset_symptoms"] - sim_incubation_times
   
   return(list(augmented_symptom_onsets=dat$date_onset_symptoms,
               augmented_infection_times=dat$date_infection   
@@ -149,7 +203,7 @@ plot_augmented_events <- function(data_quantiles, confirmed_data,
   p <- 
     p +
     geom_bar(data=confirmed_data,aes(x=date_confirmation,y=n,fill=var),stat="identity",col="black", size=0.5) +
-    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.4, size=0.5) +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.5, size=0.5) +
     geom_line(aes(x=date, y=mean,col=inflated),size=0.5) +
     scale_y_continuous(expand=c(0,0),breaks=seq(0,ymax,by=ybreaks)) +
     coord_cartesian(ylim=c(0,ymax),xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
@@ -192,9 +246,8 @@ plot_augmented_events_byprovince <- function(data_quantiles_province, confirmed_
   p <- ggplot(data_quantiles_province[data_quantiles_province$var == var_name,])
   p <- p +
     geom_bar(data=confirmed_data_province,aes(x=date_confirmation,y=n,fill=var),stat="identity",col="black", size=0.5) +
-    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.4, size=0.5) +
+    geom_ribbon(aes(x=date,ymax=upper,ymin=lower,fill=inflated),alpha=0.5, size=0.5) +
     geom_line(aes(x=date, y=median,col=inflated),size=0.5) +
-    scale_y_continuous(expand=c(0,0)) +
     coord_cartesian(xlim=c(convert_date(min_date), convert_date(max_date)+1)) +
     scale_x_date(limits=c(convert_date(min_date),convert_date(max_date)+1),
                  breaks="7 day") + 
@@ -207,7 +260,7 @@ plot_augmented_events_byprovince <- function(data_quantiles_province, confirmed_
     ggtitle(title) +
       theme(axis.text.x=element_text(angle=45,hjust=1),
             panel.grid.major = element_line(colour="grey70",size=0.2),
-            legend.position ="none")
+            legend.position ="bottom")
   p
 }
 

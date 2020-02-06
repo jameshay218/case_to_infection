@@ -30,6 +30,8 @@ if (use_geometric_confirmation_delay) {
 } else {
   symptom_observed_province <- symptom_observed_province %>% left_join(confirm_probs_gamma)
 }
+## Because only some % of onsets from confirm_delay days ago will have been confirmed by now,
+## we need to fill in the additional cases
 symptom_observed_province <- symptom_observed_province %>% ungroup() %>% 
   group_by(province) %>% partition(cluster) 
 symptom_observed_province <- symptom_observed_province %>%
@@ -63,7 +65,13 @@ rm(sim_data_all_province)
 
 ## Tally infections per day with known symptom onset times
 infections_with_symptoms_province <- symptom_all_province %>% group_by(repeat_no, date_infection, province) %>% tally()
-infections_with_symptoms_province <- infections_with_symptoms_province %>% mutate(symp_delay=as.numeric(date_today-date_infection)-1)
+## **********************
+## VERY IMPORTANT
+## this is augmenting infections starting from the first day that we could observe symptom onsets for
+## i.e. yesterday, as minimum 1 day confirmation delay here
+infections_with_symptoms_province <- infections_with_symptoms_province %>% 
+  mutate(symp_delay=as.numeric(date_today-date_infection)-minimum_confirmation_delay)
+## **********************
 
 ## Now combine with symptom onset probs to find proportion of infections on each day
 ## that have not experienced symptoms by now. Then, get number of additional infections

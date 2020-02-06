@@ -2,6 +2,8 @@
 symptom_observed <- sim_data_all %>% group_by(repeat_no, date_onset_symptoms) %>% tally()
 colnames(symptom_observed)[2] <- "date"
 symptom_observed$var <- "date_onset_symptoms"
+## Confirm delay is time from symptom onset until now, as we want to find
+## the probability that a case would have been confirmed by now from its onset
 symptom_observed <- symptom_observed %>% mutate(confirm_delay=as.numeric(date_today-date))
 
 ## Need to inflate these, as only represent some proportion of actual symptom onsets based on how 
@@ -11,6 +13,8 @@ if (use_geometric_confirmation_delay) {
 } else {
   symptom_observed <- symptom_observed %>% left_join(confirm_probs_gamma)
 }
+## Because only some % of onsets from confirm_delay days ago will have been confirmed by now,
+## we need to fill in the additional cases
 symptom_observed <- symptom_observed %>% mutate(n_inflated=(rnbinom(n(), n, cumu_prob_confirm)))
 
 ## Now we have true inflated symptom onsets. For each symptom onset, on top of the infection times

@@ -1,8 +1,9 @@
 ######################
 ## SETUP
-setwd("~/Documents/case_to_infection/")
-#setwd("~/GitHub/case_to_infection/")
-refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirmation delay data;
+#setwd("~/Documents/case_to_infection/")
+setwd("~/GitHub/case_to_infection/")
+savewd <- "plots"
+refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
@@ -74,6 +75,9 @@ if(!exists("combined_dat")) {
 }
 if(!exists("kudos_dat")) {
   source("code/pull_kudos_linelist.R")
+  
+  kudos_dat_china <- kudos_dat %>% mutate(hosp_delay = hosp_visit_date - symptom_onset) %>% 
+    filter(country %in% c("China","Taiwan","Hong Kong"))
 }
 if(!exists("use_data_diff")) {
   source("code/pull_arcgis_data.R")
@@ -129,6 +133,8 @@ combined_dat_final$individual <- 1:nrow(combined_dat_final)
 
 source("code/fit_delay_distributions.R")
 source("code/generate_delay_distributions.R")
+## Alternative using the  other line list data
+## source("code/generate_delay_distributions_moritz_data.R")
 ## Create results panel plot programmatically
 element_text_size <- 11
 text_size_theme <- theme(title=element_text(size=element_text_size), 
@@ -149,7 +155,7 @@ dates <- convert_date(min_date:(min(gamma_pars_dat_backward$date_confirmation)-1
 gamma_mean_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_mean_backward)
 gamma_var_use <- gamma_pars_dat_backward %>% filter(date_confirmation == min(date_confirmation)) %>% pull(gamma_var_backward)
 gamma_pars_dat_backward <- gamma_pars_dat_backward %>% bind_rows(tibble(date_confirmation=dates, gamma_mean_backward=gamma_mean_use, 
-                                                       gamma_var_backward=gamma_var_use, n_used=25)) %>% arrange(date_confirmation) %>% as_tibble
+                                                       gamma_var_backward=gamma_var_use, n_used=threshold, direction="backward")) %>% arrange(date_confirmation) %>% as_tibble
 gamma_pars_dat_backward <- gamma_pars_dat_backward  %>% mutate(gamma_scale_backward=gamma_var_backward/gamma_mean_backward,
                                              gamma_shape_backward=gamma_mean_backward/gamma_scale_backward) %>%
   select(-c("gamma_mean_backward","gamma_var_backward"))
@@ -192,6 +198,7 @@ for(i in seq_len(repeats)){
   individuals <- combined_dat_final$individual
   sim_data_infections[,i] <- tmp$augmented_infection_times
   sim_data_symptoms[,i] <- tmp$augmented_symptom_onsets
+  
   ## Keep track of which incubation period parameters we used
   augmentation_tracker[[i]] <- c(i,incu_period_rand$alpha, incu_period_rand$sigma)
 }
@@ -229,7 +236,7 @@ dates <- convert_date(min_date:(min(gamma_pars_dat_forward$date_onset_symptoms)-
 gamma_mean_use <- gamma_pars_dat_forward %>% filter(date_onset_symptoms == min(date_onset_symptoms)) %>% pull(gamma_mean_forward)
 gamma_var_use <- gamma_pars_dat_forward %>% filter(date_onset_symptoms == min(date_onset_symptoms)) %>% pull(gamma_var_forward)
 gamma_pars_dat_forward <- gamma_pars_dat_forward %>% bind_rows(tibble(date_onset_symptoms=dates, gamma_mean_forward=gamma_mean_use, 
-                                                                        gamma_var_forward=gamma_var_use, n_used=25,direction="forward")) %>% 
+                                                                        gamma_var_forward=gamma_var_use, n_used=threshold,direction="forward")) %>% 
   arrange(date_onset_symptoms) %>% as_tibble
 gamma_pars_dat_forward <- gamma_pars_dat_forward  %>% mutate(gamma_scale_forward=gamma_var_forward/gamma_mean_forward,
                                                                gamma_shape_forward=gamma_mean_forward/gamma_scale_forward) %>%
@@ -241,8 +248,11 @@ sim_data_all <- left_join(sim_data_all, used_weibull_pars) %>% left_join(gamma_p
 sim_data_all <- sim_data_all %>% mutate(fixed_geom=fit_kudos$par)
 
 ## Get delays for all augmented and actual events
+## i) delay from infection to symptom onset
+## ii delay from symptom onset to confirmation
+## iii) total delay
 sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_onset_symptoms-date_infection),
-                                        confirm_delay=as.numeric(date_today-date_onset_symptoms),
+                                        confirm_delay=as.numeric(date_confirmation-date_onset_symptoms),
                                         total_delay=symp_delay+confirm_delay)
 
 all_delay_prob_parameters <- sim_data_all %>% 
@@ -251,12 +261,13 @@ all_delay_prob_parameters <- sim_data_all %>%
 
 ## Get table of probabilities that events have happened after certain delays
 if(!exists("all_probs_forward")) {
-  all_probs_forward <- generate_forward_probabilities_dist(repeats, all_delay_prob_parameters, tmax=ceiling(max(sim_data_all$total_delay)+50))
+  all_probs_forward <- generate_forward_probabilities_dist(repeats, all_delay_prob_parameters, tmax=300)
 }
 confirm_probs_gamma <- all_probs_forward[[1]] %>% select(repeat_no, date_onset_symptoms, confirm_delay, cumu_prob_confirm)
 colnames(confirm_probs_gamma)[2] <- "date"
 confirm_probs_geometric <- all_probs_forward[[2]] %>% select(repeat_no, confirm_delay, cumu_prob_confirm)
 symptom_probs <- all_probs_forward[[3]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
+
 
 source("code/generate_inflations.R")
 
@@ -296,8 +307,8 @@ confirm_data_cumulative$var <- "confirmed"
 
 
 ## Get vertical dashes to show confirmation proportions over time
-prop_seen <- generate_total_forward_probabilities_dist(repeats, used_weibull_pars, fit_kudos$par, 200)
-prop_seen_mean <- prop_seen %>% group_by(total_delay) %>% summarise(mean=mean(cumu_prob_total))
+prop_seen_mean <- generate_total_forward_probabilities_dist(repeats=repeats, all_delay_prob_parameters,
+                                                       tmax=100,use_geometric_confirmation_delay1=use_geometric_confirmation_delay)
 prop_sympt_observed_mean <- confirm_probs_geometric %>% group_by(confirm_delay) %>% summarise(mean=mean(cumu_prob_confirm))
 
 ###################################################
@@ -305,12 +316,23 @@ prop_sympt_observed_mean <- confirm_probs_geometric %>% group_by(confirm_delay) 
 ## Get times at which at least these % of infections from that day
 ## have been seen
 threshold_vals <- c(0.95, 0.8, 0.5, 0.2)
-## Get mean overall confirmation probs
-prop_seen <- prop_seen_mean %>% pull(mean)
-## Sequence from today to 200 days ago
-times <- rev(seq(date_today-200, date_today,by=1))
-## First day in the past at which these percentages have been seen
-thresholds <- times[sapply(threshold_vals, function(x) which(prop_seen > x)[1])]
+if (use_geometric_confirmation_delay) {
+  ## Get mean overall confirmation probs
+  prop_seen <- prop_seen_mean %>% pull(cumu_prob_total)
+  ## Sequence from today to 200 days ago
+  times <- rev(seq(date_today-200, date_today,by=1))
+  ## First day in the past at which these percentages have been seen
+  thresholds <- times[sapply(threshold_vals, function(x) which(prop_seen > x)[1])]
+} else {
+  thresholds <- prop_seen_mean %>% mutate(seen_95=ifelse(cumu_prob_total > 0.95,1,0),
+                            seen_80=ifelse(cumu_prob_total > 0.80,1,0),
+                            seen_50=ifelse(cumu_prob_total > 0.50,1,0),
+                            seen_20=ifelse(cumu_prob_total > 0.20,1,0)) %>% 
+    pivot_longer(c("seen_95","seen_80","seen_50","seen_20"),
+                   names_to="threshold",values_to="passed") %>%
+    filter(passed==1) %>% group_by(threshold) %>% summarise(res=max(date_infection)) %>% pull(res) %>% rev()
+  
+}
 #####################################################
 #####################################################
 ## GET PROPORTION OBSERVED BY DATE OF SYMPTOM ONSET
@@ -321,10 +343,10 @@ p_result <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_tod
                           ymax1=10000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 p_result_cumu <- plot_augmented_data(final_quantiles_cumulative, confirm_data_cumulative, max_date=date_today, min_date="15.12.2019",
                                 ymax1=50000,ymax2=50000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
-png("plots/main_plot.png",height=10,width=10,res=300,units="in")
+png(paste0(savewd,"/main_plot.png"),height=10,width=10,res=300,units="in")
 p_result
 dev.off()
-png("plots/main_plot_cumu.png",height=10,width=10,res=300,units="in")
+png(paste0(savewd,"/main_plot_cumu.png"),height=10,width=10,res=300,units="in")
 p_result_cumu
 dev.off()
 
@@ -379,7 +401,7 @@ top_6_provinces <- factor_order[1:6]
 p_infections <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                  confirmed_data_province=confirm_dat_province,
                                  provinces = top_6_provinces,
-                                 var_name="date_infections",max_date="03.02.2020",min_date="01.12.2019",
+                                 var_name="date_infections",max_date="04.02.2020",min_date="01.12.2019",
                                  thresholds=NULL,ncol=3)
 p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                                  confirmed_data_province=confirm_dat_province,
@@ -387,11 +409,13 @@ p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_qua
                                                  var_name="date_onset_symptoms",max_date="03.02.2020",min_date="01.12.2019",
                                                  cols=c("orange","red"),
                                                  thresholds=NULL, ncol=3)
-png("plots/infections_by_province.png",height=6,width=12,units="in",res=300)
+png(paste0(savewd,"/infections_by_province.png"),height=6,width=12,units="in",res=300)
 p_infections
 dev.off()
 p_symptoms
-
+png(paste0(savewd,"/symptoms_by_province.png"),height=6,width=12,units="in",res=300)
+p_symptoms
+dev.off()
 ## Plot time from start
 #p_start_delay_dist <- plot_time_from_start(sim_data_infections_melted, individual_key,xmax=100)
 #p_start_delay_dist

@@ -38,4 +38,3 @@ kudos_dat <- kudos_dat %>% mutate(delay = reporting_date - symptom_onset)
 kudos_dat$delay1 <- kudos_dat$delay
 kudos_dat <- kudos_dat %>% mutate(delay = ifelse(delay < 1, 1, delay))
 
-

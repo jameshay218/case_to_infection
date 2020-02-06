@@ -1,6 +1,7 @@
 #' Vector of confounding date entries
 confounding_dates <- c("none", "10.01.2020 - 22.01.2020", "pre 18.01.2020", "early january","",
-                       "11.26.2020", "18.01.2020 - 23.01.2020", "not sure",-35067)
+                       "11.26.2020", "18.01.2020 - 23.01.2020", "not sure",-35067, 18660, 19025, ":",
+                       "end of December","31.01,2020")
 
 
 #' Checks the given vector of dates as strings and converts to NA if not useable

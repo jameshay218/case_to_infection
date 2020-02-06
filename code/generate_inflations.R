@@ -84,7 +84,7 @@ infections_all <- symptom_all %>%
 final_infections_tally <- infections_all %>% 
   group_by(repeat_no, date_infection, augmented) %>%
   tally() %>% 
-  pivot_wider(names_from=augmented,values_from=n, names_prefix="inflated") %>%
+  pivot_wider(names_from=augmented,values_from=n, values_fill=list(n=0), names_prefix="inflated") %>%
   mutate(total=inflated0 + inflated1) %>% ungroup()
 final_infections_tally$var <- "date_infections"
 colnames(final_infections_tally)[2] <- "date"

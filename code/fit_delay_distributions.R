@@ -19,9 +19,8 @@ p_other_confirm_fit<- ggplot(china_dat) +
   scale_y_continuous(expand=c(0,0),limits=c(0,0.2)) +
   geom_vline(xintercept=1,linetype="dashed") +
   ylab("Probability density") + xlab("Days since symptom onset") +
-  ggtitle("Distribution of delays between symptom\n onset and confirmation") +
+  ggtitle("Distribution of delays between symptom onset and confirmation") +
   theme_pubr()
-p_other_confirm_fit
 
 ####################################
 ## OLD LINE LIST HOSPITALISATION DELAY DISTRIBUTION
@@ -39,9 +38,8 @@ p_other_hosp_fit<- ggplot(china_dat) +
   geom_histogram(aes(x=hospitalisation_delay,y=..density..),binwidth=1) +
   geom_line(data=fit_line_dat2, aes(x=x,y=y), col="red") +
   scale_x_continuous(breaks=seq(0,25,by=1)) +
-  ggtitle("Distribution of delays between symptom\n onset and hospitalisation (not great fit)") +
+  ggtitle("Distribution of delays between symptom onset and hospitalisation") +
   theme_pubr()
-p_other_hosp_fit
 ## Fit isn't great for first day
 
 ####################################
@@ -59,9 +57,8 @@ p_other_hosp_fit<- ggplot(kudos_dat_china) +
   geom_histogram(aes(x=hosp_delay,y=..density..),binwidth=1) +
   geom_line(data=fit_line_dat3, aes(x=x,y=y), col="red") +
   scale_x_continuous(breaks=seq(0,25,by=1)) +
-  ggtitle("Distribution of delays between symptom\n onset and hospitalisation (not great fit)") +
+  ggtitle("Distribution of delays between symptom onset and hospitalisation") +
   theme_pubr()
-p_other_hosp_fit
 
 ####################################
 ## KUDOS LINE LIST CONFIRMATION DELAY
@@ -83,7 +80,6 @@ p_confirm_delay_kudos_global <- kudos_dat %>% select(delay) %>% drop_na() %>%
   ylab("Probability density") + xlab("Days since symptom onset") +
   ggtitle("Distribution of delays between symptom onset and confirmation\n Kudos line list data (geometric fit)") +
   theme_pubr()
-p_confirm_delay_kudos_global
 
 
 ## Fit a geometric distribution to the confirmation delay distribution
@@ -102,7 +98,6 @@ p_confirm_delay_kudos <- kudos_dat_china %>% select(delay) %>% drop_na() %>%
   ylab("Probability density") + xlab("Days since symptom onset") +
   ggtitle("Distribution of delays between symptom onset and confirmation\n Kudos line list data (geometric fit)") +
   theme_pubr()
-p_confirm_delay_kudos
 
 
 ####################################
@@ -126,7 +121,6 @@ p_confirm_delay_kudos_gamma <- kudos_dat_china %>% select(delay) %>% drop_na() %
   ylab("Probability density") + xlab("Days since symptom onset") +
   ggtitle("Distribution of delays between symptom onset and confirmation\n Kudos line list data (gamma fit)") +
   theme_pubr()
-p_confirm_delay_kudos_gamma
 
 
 
@@ -216,9 +210,28 @@ p_incubation <- ggplot(weibull_dists_bounds) +
   geom_line(aes(x=times,y=median),size=1) +
   ylab("Probability density") +
   xlab("Days since onset of infection") +
-  ggtitle("Incubation period distribution\n (Weibull, time from infection to symptoms)") +
+  ggtitle("Incubation period distribution (Weibull, time from infection to symptoms)") +
   scale_y_continuous(limits=c(0,0.3),expand=c(0,0),breaks=seq(0,0.3,by=0.05)) +
   scale_x_continuous(expand=c(0,0)) +
   theme_pubr()
-p_incubation
 
+
+####################################
+## DEATH DELAY DISTRIBUTION
+####################################
+## Fit a geometric distribution to the confirmation delay distribution
+use_death_delays <- combined_dat %>% select(death_delay) %>% 
+  drop_na() %>% pull(death_delay)
+fit_deaths_gamma <- optim(c(5,25), fit_gamma_discrete, dat=use_death_delays)
+fit_deaths_gamma_line <- dgamma_discrete_mean(seq(0,max(combined_dat$death_delay,na.rm=TRUE),by=1),
+                                             mean=fit_deaths_gamma$par[1],var=fit_deaths_gamma$par[2],use_log=FALSE)
+fit_deaths_gamma_dat <- data.frame(x=seq(0,max(combined_dat$death_delay,na.rm=TRUE),by=1),y=fit_deaths_gamma_line)
+
+p_death_delay <- combined_dat %>% select(death_delay) %>% drop_na() %>%
+  ggplot() + 
+  geom_histogram(aes(x=death_delay,y=..density..),binwidth=1,col="black") +
+  geom_line(data=fit_deaths_gamma_dat, aes(x=x,y=y), col="red",size=1) +
+  scale_x_continuous(breaks=seq(0,max(kudos_dat_china$delay,na.rm=TRUE),by=5),labels=seq(0,max(kudos_dat_china$delay,na.rm=TRUE),by=5)) +
+  #scale_y_continuous(expand=c(0,0),limits=c(0,0.15)) +
+  ylab("Probability density") + xlab("Days from symptom onset to death") +
+  theme_pubr()

@@ -10,12 +10,12 @@ sim_data_all_province <- sim_data_all_province %>% select(individual, province, 
                                       repeat_no, date_infection, date_onset_symptoms,
                                       alpha, sigma, symp_delay, confirm_delay, total_delay)
 
-start_dates <- sim_data_all_province %>% group_by(province,repeat_no) %>%
-  mutate(first_day=min(date_infection)) %>% ungroup()
+#start_dates <- sim_data_all_province %>% group_by(province,repeat_no) %>%
+#  mutate(first_day=min(date_infection)) %>% ungroup()
 ## Days of first infection for each province
-p_start_days <- ggplot(start_dates) +
-  geom_histogram(aes(x=first_day)) + facet_wrap(~province,scales="free_y") +
-  theme_pubr()
+#p_start_days <- ggplot(start_dates) +
+#  geom_histogram(aes(x=first_day)) + facet_wrap(~province,scales="free_y") +
+#  theme_pubr()
 
 ## How many symptom onsets do we have per day from confirmed cases?
 symptom_observed_province <- sim_data_all_province %>% group_by(repeat_no, date_onset_symptoms, province) %>% tally() %>% ungroup()

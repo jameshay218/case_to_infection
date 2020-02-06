@@ -18,7 +18,7 @@ all_data <- NULL
 all_data_list <- NULL
 for(date in available_dates) {
   Sys.sleep(0.01)
-  tmp_dat <- read_sheet(ss=url,sheet=date,range="A:F")
+  tmp_dat <- read_sheet(ss=url,sheet=date,range="A:G")
   print(colnames(tmp_dat))
   tmp_dat <- tmp_dat[,colnames(tmp_dat) %in% names(colnames_key)]
   colnames(tmp_dat) <- colnames_key[colnames(tmp_dat)]
@@ -76,7 +76,7 @@ use_data <- all_data
 use_data$report_date <- convert_datestring_to_date(use_data$report_date)
 
 use_data <- use_data %>% arrange(province, report_date)
-use_data <- use_data %>% select(province, country_region,report_date,confirmed)
+use_data <- use_data %>% select(province, country_region,report_date,confirmed, deaths)
 use_data <- unique(use_data)
 
 ## can't use data with no report date
@@ -85,6 +85,9 @@ use_data <- use_data %>% filter(!is.na(report_date))
 use_data <- use_data %>% mutate(province=ifelse(is.na(province), country_region, province)) %>%
   mutate(province=ifelse(is.na(province), country, province))
 use_data$updated_day <- as.Date(use_data$report_date)
+use_data <- use_data %>% mutate(confirmed=ifelse(is.na(confirmed),0, confirmed),
+                    deaths=ifelse(is.na(deaths),0,deaths))
+
 ## The other factors are in days, so can only use daily incidence.
 ## I reason that we should use the last report of each day that exists for
 ## each province
@@ -164,6 +167,11 @@ ggplot(use_data[use_data$province %in% c("Hubei","Guangdong","Zheijiang","Henan"
   facet_wrap(~province,scales="free_y")
 
 
+use_data_diff_deaths <- use_data_subset %>% 
+  group_by(province) %>%
+  mutate(prev=dplyr::lag(deaths,n=1)) %>%
+  #mutate(prev=ifelse(raw_day==max(raw_day), NA, prev)) %>%
+  mutate(diff=deaths-prev) 
 
 use_data_diff <- use_data_subset %>% 
   group_by(province) %>%
@@ -183,5 +191,13 @@ png("plots/reports_new_perday.png",width=12,height=12,res=300,units="in")
 p_diff_per_day
 dev.off()
 
-
+p_diff_per_day_deaths <- use_data_diff_deaths %>% filter(province == "Hubei") %>% 
+ ggplot() + 
+  geom_bar(aes(x=raw_day,y=diff),stat="identity") + 
+  facet_wrap(~province, scale="free_y",ncol=5) +
+  theme_bw() +
+  scale_x_date(limits=c(convert_date("19.01.2020"),convert_date(date_today)),
+               breaks="1 day") +
+  xlab("Day of report") + ylab("New confirmed cases from previous day") +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) 
 

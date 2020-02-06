@@ -108,9 +108,6 @@ p_sliding_delays_backward <- ggplot(all_dat_backward) +
   ylab("Count") +
   ggtitle("Confirmation delay distribution from day of confirmation for each window (backward)") +
   theme(legend.position=c(0.9,0.1))
-png("plots/delay_distribution_backward.png",height=6,width=8,units="in",res=300)
-p_sliding_delays_backward
-dev.off()
 
 ## What discretised gamma parameters should be used for each date of confirmation?
 gamma_pars_dat_backward <- do.call("rbind", gamma_pars_backward)
@@ -214,9 +211,6 @@ p_sliding_delays_forward <- ggplot(all_dat_forward) +
   ylab("Count") +
   ggtitle("Confirmation delay distribution from day of symptom onset for each window (forward)") +
   theme(legend.position=c(0.9,0.1))
-png("plots/delay_distribution_forward.png",height=6,width=8,units="in",res=300)
-p_sliding_delays_forward
-dev.off()
 
 ## What discretised gamma parameters should be used for each date of confirmation?
 gamma_pars_dat_forward <- do.call("rbind", gamma_pars_forward)

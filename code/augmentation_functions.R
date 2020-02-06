@@ -298,8 +298,21 @@ expand_arcgis <- function(arcgis_dat) {
 }
 
 merge_data <- function(linelist_dat, arcgis_dat, switch_date){
-  arcgis_dat <- arcgis_dat %>% select(province, raw_day, country_region, country, diff)
+  arcgis_dat <- arcgis_dat %>% select(province, raw_day, country_region, country, diff)  
+  
   colnames(arcgis_dat) <- c("province","date_confirmation","country_region","country","n")
+  
+  to_subtract_from_arcgis <- linelist_dat %>% filter(date_confirmation <= convert_date(switch_date)) %>% 
+    group_by(province) %>% tally() %>% ungroup()
+  to_subtract_from_arcgis$date_confirmation <- convert_date(switch_date)+1
+  colnames(to_subtract_from_arcgis)[2] <- "to_subtract"
+  
+  arcgis_dat1 <- arcgis_dat %>% 
+    left_join(to_subtract_from_arcgis) %>% 
+    mutate(to_subtract=ifelse(is.na(to_subtract),0,to_subtract)) %>%
+    mutate(n = n-to_subtract) %>%
+    select(-to_subtract)
+  
   arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(country_region=="Mainland China", "China", country))
   arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(province %in% c("Taiwan","Hong Kong","Tibet"), "China",country))
   arcgis_dat <- arcgis_dat %>% mutate(country=ifelse(is.na(country), as.character(province), country))
@@ -310,8 +323,6 @@ merge_data <- function(linelist_dat, arcgis_dat, switch_date){
   arcgis_dat <- arcgis_dat %>% mutate(date_onset_symptoms=NA, 
                                       date_death_or_discharge=NA,
                                       date_admission_hospital=NA)
-  
-  
   subset_combined_dat <- linelist_dat %>% 
     filter(date_confirmation <= convert_date(switch_date) & country == "China") %>%
     select(province, date_confirmation,date_death_or_discharge,date_onset_symptoms,date_admission_hospital) %>%

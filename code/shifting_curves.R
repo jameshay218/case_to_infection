@@ -24,7 +24,7 @@ province_data1 <- province_data1 %>% filter(total > cases_needed)
 ## IMPORTANT - choose the threshold to cut off measurements from
 print(threshold_vals)
 print(thresholds)
-threshold_i <- 2
+threshold_i <- 1
 province_data1 <- province_data1 %>% filter(date <= thresholds[threshold_i])
 province_data1 <- province_data1 %>% filter(var=="date_infections") %>% mutate(x=as.numeric(date +shift_needed))
 
@@ -66,10 +66,6 @@ p_comparison <- ggplot(sim_data_quantiles_province1) +
         axis.title = element_text(size=12)) +
   facet_wrap(~province, scales="free_y", ncol=4)
 p_comparison
-
-png("plots/comparison_plot_geometric.png",height=6,width=8,units="in",res=300)
-plot(p_comparison)
-dev.off()
 
 
 

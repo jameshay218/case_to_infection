@@ -7,8 +7,7 @@ refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmat
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
-use_geometric_confirmation_delay <- FALSE
-
+use_geometric_confirmation_delay <- TRUE
 save_augmented_results <- FALSE
 
 library(ggplot2)
@@ -56,7 +55,7 @@ var_colnames <- c("date_confirmation","date_onset_symptoms","date_admission_hosp
 use_colnames <- c(key_colnames, var_colnames)
 
 ## Number of bootstrap samples to take. Set this to something small for a quick run
-repeats <- 100
+repeats <- 1000
 
 #########################
 ## LOAD DATA
@@ -412,7 +411,6 @@ p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_qua
 png(paste0(savewd,"/infections_by_province.png"),height=6,width=12,units="in",res=300)
 p_infections
 dev.off()
-p_symptoms
 png(paste0(savewd,"/symptoms_by_province.png"),height=6,width=12,units="in",res=300)
 p_symptoms
 dev.off()

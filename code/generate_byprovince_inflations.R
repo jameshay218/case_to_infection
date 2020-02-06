@@ -61,8 +61,6 @@ symptom_all_province <- sim_data_all_province %>% mutate(individual = as.charact
   bind_rows(symptom_unobserved_province)
 symptom_all_province <- symptom_all_province %>% mutate(augmented = ifelse(individual=="augmented",1,0))
 
-rm(sim_data_all_province)
-
 ## Tally infections per day with known symptom onset times
 infections_with_symptoms_province <- symptom_all_province %>% group_by(repeat_no, date_infection, province) %>% tally()
 ## **********************

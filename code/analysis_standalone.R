@@ -474,7 +474,7 @@ all_cases_linelist <- all_cases_linelist %>% mutate(date_confirmation = ifelse(i
 all_cases_linelist <- all_cases_linelist %>% mutate(date_confirmation = convert_date(date_confirmation)) %>% 
   select(-c("confirm_delay","total_delay","symp_delay"))
 
-dates_to_check <- convert_date(convert_date("01.01.2020"):convert_date(date_today-1))
+dates_to_check <- convert_date(convert_date("15.12.2019"):convert_date(date_today-1))
 all_prev <- NULL
 for(i in seq_along(dates_to_check)) {
   date_prev <- dates_to_check[i]
@@ -489,8 +489,21 @@ all_prev_dat <- all_prev_dat %>% group_by(date, province) %>%
 
 colnames(all_prev_dat) <- c("date","province", "min","lower","midlow","median",
                                         "midhigh","upper","max","mean")
-all_prev_dat %>% ggplot() + geom_ribbon(aes(x=date,ymin=lower,ymax=upper)) + facet_wrap(~province)
+p_prev <- all_prev_dat %>% ggplot() + geom_ribbon(aes(x=date,ymin=lower,ymax=upper),alpha=0.5) + 
+  geom_line(aes(x=date,y=median)) +
+  scale_x_date(breaks="5 day") +
+  facet_wrap(~province, scales="free_y",ncol=5) +
+  geom_vline(xintercept=thresholds,linetype="dashed",col="red") +
+  theme_pubr() +
+  theme(axis.text.x=element_text(angle=45,hjust=1),
+        panel.grid.major=element_line(size=0.25,color="grey70"))
 
+png(paste0("plots", "/prevalence.png"),height=12,width=12,res=300,units="in")
+p_prev
+dev.off()
+
+colnames(all_prev_dat) <- c("date","province","quantile_01.0","quantile_02.5","quantile_25.0","median","quantile_75.0","quantile_97.5","quantile_99.0","mean")
+all_prev_dat %>% write_csv("augmented_data/all_prev_20200203.csv")
 
 #########################
 ## FINAL HOUSEKEEPING

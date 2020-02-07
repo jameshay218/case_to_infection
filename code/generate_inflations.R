@@ -26,11 +26,13 @@ symptom_unobserved <- symptom_observed %>%
 
 ## Give each of these inflated symptom onsets an infection onset time
 symptom_unobserved <- symptom_unobserved %>% left_join(used_weibull_pars)
+symptom_unobserved <- symptom_unobserved %>% group_by(repeat_no) %>% mutate(augmented_id=1:n()) %>% ungroup()
 symptom_unobserved <- symptom_unobserved %>% mutate(symp_delay = floor(rweibull(n(), alpha, sigma)),
                                                   date_infection = date - symp_delay,
                                                   total_delay = symp_delay + confirm_delay,
-                                                  individual="augmented") %>%
-  select(repeat_no, date, confirm_delay, symp_delay, total_delay, date_infection, individual, alpha, sigma) %>%
+                                                  augmented=1,
+                                                  individual=paste0("augmented_", repeat_no, "_", augmented_id)) %>%
+  select(repeat_no, date, confirm_delay, symp_delay, total_delay, date_infection, individual, alpha, sigma, augmented) %>%
   ungroup()
 colnames(symptom_unobserved)[2] <- "date_onset_symptoms"
 
@@ -39,7 +41,10 @@ colnames(symptom_unobserved)[2] <- "date_onset_symptoms"
 symptom_all <- sim_data_all %>% mutate(individual = as.character(individual)) %>% 
   ungroup() %>%
   bind_rows(symptom_unobserved)
-symptom_all <- symptom_all %>% mutate(augmented = ifelse(individual=="augmented",1,0))
+
+symptom_all <- symptom_all %>% mutate(date_confirmation=ifelse(is.na(date_confirmation), 
+                                                               date_onset_symptoms+confirm_delay, date_confirmation))
+symptom_all <- symptom_all %>% mutate(date_confirmation = convert_date(date_confirmation))
 
 ## Tally infections per day with known symptom onset times
 infections_with_symptoms <- symptom_all %>% group_by(repeat_no, date_infection) %>% tally()
@@ -68,11 +73,15 @@ print(range_new_infections)
 
 ## Expand out so 1 row per inflated infection
 ## This is inflated infections for each repeat
+infections_with_symptoms <- infections_with_symptoms %>% group_by(repeat_no) %>% 
+  mutate(augmented_id=1:n()) %>% ungroup()
 infections_unobserved <- infections_with_symptoms %>% 
-  select(repeat_no, date_infection, n_inflated, symp_delay) %>%
+  select(repeat_no, date_infection, n_inflated, symp_delay, augmented_id) %>%
   group_by(date_infection, repeat_no) %>% 
   uncount(n_inflated) %>%
-  mutate(individual="augmented_infection", augmented=1)
+  mutate(augmented=1,
+         individual=paste0("augmented_", repeat_no, "_", augmented_id)) %>%
+  select(-augmented_id)
 
 ## Now merge unobserved infections with infections from those with symptom onset times
 infections_all <- symptom_all %>% 

@@ -1,14 +1,14 @@
 ######################
 ## SETUP
-setwd("~/Documents/case_to_infection/")
-#setwd("~/GitHub/case_to_infection/")
+#setwd("~/Documents/case_to_infection/")
+setwd("~/GitHub/case_to_infection/")
 savewd <- "plots1"
 refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
 use_geometric_confirmation_delay <- FALSE
-save_augmented_results <- FALSE
+save_augmented_results <- TRUE
 
 library(ggplot2)
 library(tidyverse)
@@ -260,6 +260,7 @@ sim_data_all <- sim_data_all %>% mutate(fixed_geom=fit_kudos$par)
 sim_data_all <- sim_data_all %>% mutate(symp_delay=as.numeric(date_onset_symptoms-date_infection),
                                         confirm_delay=as.numeric(date_confirmation-date_onset_symptoms),
                                         total_delay=symp_delay+confirm_delay)
+sim_data_all <- sim_data_all %>% mutate(augmented=0)
 
 ## Free some memory
 rm(sim_data_symptoms_melted)
@@ -282,6 +283,33 @@ confirm_probs_geometric <- all_probs_forward[[2]] %>% select(repeat_no, confirm_
 symptom_probs <- all_probs_forward[[3]] %>% select(repeat_no, symp_delay, cumu_prob_symp)
 
 source("code/generate_inflations.R")
+
+
+#########################
+## FINAL HOUSEKEEPING
+## Tidy up data to share
+if (save_augmented_results) {
+  n_subset <- 100
+  all_repeats <- 1:repeats
+  use_repeats <- sample(all_repeats, n_subset)
+  final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
+  colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
+  
+  final_infections_share <- infections_all %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
+    filter(repeat_no %in% use_repeats)
+  final_symptom_onsets_share <- symptom_all %>% select(repeat_no, individual, date_infection, 
+                                                       date_onset_symptoms, date_confirmation, symp_delay, confirm_delay, total_delay, augmented) %>%
+    filter(repeat_no %in% use_repeats)
+  
+  write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
+  write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
+  write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
+  ## Need to free some memory
+  rm(final_dat_to_share)
+  rm(final_symptom_onsets_share)
+  rm(final_infections_share)
+  
+} 
 
 rm(symptom_all)
 rm(infections_all)
@@ -442,29 +470,21 @@ source("code/shifting_curves.R")
 ## FINAL HOUSEKEEPING
 ## Tidy up data to share
 if (save_augmented_results) {
-  n_subset <- 100
-  all_repeats <- 1:repeats
-  use_repeats <- sample(all_repeats, n_subset)
-  final_dat_to_share <- final_all %>% filter(repeat_no %in% use_repeats)
-  colnames(final_dat_to_share) <- c("repeat_no","variable","date","from_confirmed","inflated_event","total_events")
-  
-  final_infections_share <- infections_all %>% select(repeat_no, individual, date_infection, symp_delay, augmented) %>% 
-    filter(repeat_no %in% use_repeats)
-  final_symptom_onsets_share <- symptom_all %>% select(repeat_no, individual, date_infection, 
-                                                       date_onset_symptoms, symp_delay, confirm_delay, total_delay, augmented) %>%
-    filter(repeat_no %in% use_repeats)
-  
-  write_csv(final_dat_to_share, path="augmented_data/augmented_totals.csv")
-  write_csv(final_symptom_onsets_share, path="augmented_data/augmented_symptom_times.csv")
-  write_csv(final_infections_share, path="augmented_data/augmented_infection_times.csv")
-  
-  ## Need to free some memory
-  rm(final_dat_to_share)
-  rm(final_symptom_onsets_share)
-  rm(final_infections_share)
-  
   final_dat_to_share_province <- final_all_province %>% filter(repeat_no %in% use_repeats)
   colnames(final_dat_to_share_province) <- c("repeat_no","variable","date","province","from_confirmed","inflated_event","total_events")
   
-  write_csv(final_dat_to_share_province, path="augmented_data/augmented_totals_by_province.csv")
+  final_infections_share_province <- infections_all_province %>% select(repeat_no, individual, province, date_infection, symp_delay, augmented) %>% 
+    filter(repeat_no %in% use_repeats)
+  final_symptom_onsets_share_province <- symptom_all_province %>% select(repeat_no, individual, province, date_infection, 
+                                                       date_onset_symptoms, date_confirmation, symp_delay, confirm_delay, total_delay, augmented) %>%
+    filter(repeat_no %in% use_repeats)
+  
+  write_csv(final_dat_to_share_province, path="augmented_data/augmented_totals_province.csv")
+  write_csv(final_symptom_onsets_share_province, path="augmented_data/augmented_symptom_times_province.csv")
+  write_csv(final_infections_share_province, path="augmented_data/augmented_infection_times_province.csv")
+  
+  ## Need to free some memory
+  rm(final_dat_to_share_province)
+  rm(final_symptom_onsets_share_province)
+  rm(final_infections_share_province)
 }

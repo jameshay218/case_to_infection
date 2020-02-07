@@ -8,7 +8,7 @@ sim_data_all_province <- right_join(individual_key, sim_data_all,by=c("individua
 sim_data_all_province <- sim_data_all_province %>% filter(!is.na(date_confirmation))
 sim_data_all_province <- sim_data_all_province %>% select(individual, province, date_confirmation, 
                                       repeat_no, date_infection, date_onset_symptoms,
-                                      alpha, sigma, symp_delay, confirm_delay, total_delay)
+                                      alpha, sigma, symp_delay, confirm_delay, total_delay, augmented)
 
 #start_dates <- sim_data_all_province %>% group_by(province,repeat_no) %>%
 #  mutate(first_day=min(date_infection)) %>% ungroup()
@@ -46,11 +46,14 @@ symptom_unobserved_province <- symptom_observed_province %>%
 
 ## Give each of these inflated symptom onsets an infection onset time
 symptom_unobserved_province <- symptom_unobserved_province %>% left_join(used_weibull_pars)
+symptom_unobserved_province <- symptom_unobserved_province %>% group_by(repeat_no) %>% mutate(augmented_id=1:n()) %>% ungroup()
 symptom_unobserved_province <- symptom_unobserved_province %>% mutate(symp_delay = floor(rweibull(n(), alpha, sigma)),
                                                   date_infection = date - symp_delay,
                                                   total_delay = symp_delay + confirm_delay,
-                                                  individual="augmented") %>%
-  select(repeat_no, date, confirm_delay, symp_delay, total_delay, date_infection, individual, alpha, sigma, province) %>%
+                                                  augmented=1,
+                                                  individual=paste0("augmented_", repeat_no, "_", augmented_id)) %>%
+  select(repeat_no, date, confirm_delay, symp_delay, total_delay, date_infection, 
+         individual, alpha, sigma, province, augmented) %>%
   ungroup()
 colnames(symptom_unobserved_province)[2] <- "date_onset_symptoms"
 
@@ -59,7 +62,9 @@ colnames(symptom_unobserved_province)[2] <- "date_onset_symptoms"
 symptom_all_province <- sim_data_all_province %>% mutate(individual = as.character(individual)) %>% 
   ungroup() %>%
   bind_rows(symptom_unobserved_province)
-symptom_all_province <- symptom_all_province %>% mutate(augmented = ifelse(individual=="augmented",1,0))
+symptom_all_province <- symptom_all_province %>% mutate(date_confirmation=ifelse(is.na(date_confirmation), 
+                                                               date_onset_symptoms+confirm_delay, date_confirmation))
+symptom_all_province <- symptom_all_province %>% mutate(date_confirmation = convert_date(date_confirmation))
 
 ## Tally infections per day with known symptom onset times
 infections_with_symptoms_province <- symptom_all_province %>% group_by(repeat_no, date_infection, province) %>% tally()
@@ -78,15 +83,18 @@ infections_with_symptoms_province <- infections_with_symptoms_province %>% left_
 ## Assign to cluster then run rbinoms
 infections_with_symptoms_province <- infections_with_symptoms_province %>% group_by(province) %>% partition(cluster)
 infections_with_symptoms_province <- infections_with_symptoms_province %>% mutate(n_inflated = rnbinom(n(), n, cumu_prob_symp)) %>% collect()
+infections_with_symptoms_province <- infections_with_symptoms_province %>% group_by(repeat_no) %>% 
+  mutate(augmented_id=1:n()) %>% ungroup()
 
 ## Expand out so 1 row per inflated infection
 ## This is inflated infections for each repeat
 infections_unobserved_province <- infections_with_symptoms_province %>% 
-  select(repeat_no, date_infection, n_inflated, symp_delay, province) %>%
+  select(repeat_no, date_infection, n_inflated, symp_delay, province, augmented_id) %>%
   group_by(date_infection, repeat_no, province) %>% 
   uncount(n_inflated) %>%
-  mutate(individual="augmented_infection", augmented=1)
-
+  mutate(augmented=1,
+         individual=paste0("augmented_", repeat_no, "_", augmented_id)) %>%
+  select(-augmented_id)
 ## Now merge back with infections direct from symptom onset times
 infections_all_province <- symptom_all_province %>% 
   select(repeat_no, individual, date_infection, symp_delay, augmented, province) %>%

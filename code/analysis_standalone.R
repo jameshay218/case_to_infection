@@ -1,7 +1,7 @@
 ######################
 ## SETUP
-#setwd("~/Documents/case_to_infection/")
-setwd("~/GitHub/case_to_infection/")
+setwd("~/Documents/case_to_infection/")
+#setwd("~/GitHub/case_to_infection/")
 savewd <- "plots1"
 refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file

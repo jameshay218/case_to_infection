@@ -89,6 +89,11 @@ kudos_dat_china <- kudos_dat %>% mutate(hosp_delay = hosp_visit_date - symptom_o
  #saveRDS(use_data_subset, "data/use_data_subset.rds")
  saveRDS(use_data_diff, "data/use_data_diff.rds")
 
+ kudos_dat_less <- kudos_dat %>% select("id","reporting_date","location","country","gender","symptom_onset","hosp_visit_date","type_of_visit","exposure_start",
+                                        "visiting Wuhan","death","recovered","symptom","source","link")
+ kudos_dat_less %>% write_csv("data/kudos_dat.csv")
+ 
+ combined_dat %>% write_csv("data/mortiz_dat.csv")
 ## Key data objects produce:
 ## kudos_dat: the kudos line list data
 ## combined_dat: the Mortiz Kraemer line list data
@@ -414,9 +419,6 @@ source("code/generate_byprovince_inflations.R")
 
 rm(sim_data_all)
 
-rm(symptom_all_province)
-rm(infections_all_province)
-
 
 final_quantiles_province <- final_all_province %>% select(repeat_no, var, date, inflated0, total, province) %>% 
   pivot_longer(cols=c("inflated0","total"),names_to="inflated") %>% 
@@ -465,6 +467,30 @@ p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_qua
 
 source("code/shifting_curves.R")
 
+### Find prevalence by province
+infections_all_province <- infections_all_province %>% mutate(date_onset_symptoms = date_infection + symp_delay)
+all_cases_linelist <- left_join(infections_all_province, symptom_all_province) %>% select(-c("alpha", "sigma"))
+all_cases_linelist <- all_cases_linelist %>% mutate(date_confirmation = ifelse(is.na(date_confirmation), date_onset_symptoms+1,date_confirmation))
+all_cases_linelist <- all_cases_linelist %>% mutate(date_confirmation = convert_date(date_confirmation)) %>% 
+  select(-c("confirm_delay","total_delay","symp_delay"))
+
+dates_to_check <- convert_date(convert_date("01.01.2020"):convert_date(date_today-1))
+all_prev <- NULL
+for(i in seq_along(dates_to_check)) {
+  date_prev <- dates_to_check[i]
+  print(date_prev)
+  prev <- all_cases_linelist %>% group_by(repeat_no, province) %>% filter(date_infection <= date_prev & date_confirmation >= date_prev) %>% tally()
+  prev$date <- date_prev
+  all_prev[[i]] <- prev
+}
+all_prev_dat <- do.call("bind_rows", all_prev)
+all_prev_dat <- all_prev_dat %>% group_by(date, province) %>% 
+  do(data.frame(t(c(quantile(.$n, probs = c(0.01,0.025,0.25,0.5,0.75,0.975,0.99),na.rm=TRUE),mean(.$n)))))
+
+colnames(all_prev_dat) <- c("date","province", "min","lower","midlow","median",
+                                        "midhigh","upper","max","mean")
+all_prev_dat %>% ggplot() + geom_ribbon(aes(x=date,ymin=lower,ymax=upper)) + facet_wrap(~province)
+
 
 #########################
 ## FINAL HOUSEKEEPING
@@ -479,6 +505,9 @@ if (save_augmented_results) {
                                                        date_onset_symptoms, date_confirmation, symp_delay, confirm_delay, total_delay, augmented) %>%
     filter(repeat_no %in% use_repeats)
   
+  
+  
+  
   write_csv(final_dat_to_share_province, path="augmented_data/augmented_totals_province.csv")
   write_csv(final_symptom_onsets_share_province, path="augmented_data/augmented_symptom_times_province.csv")
   write_csv(final_infections_share_province, path="augmented_data/augmented_infection_times_province.csv")
@@ -487,4 +516,8 @@ if (save_augmented_results) {
   rm(final_dat_to_share_province)
   rm(final_symptom_onsets_share_province)
   rm(final_infections_share_province)
+  
+  rm(symptom_all_province)
+  rm(infections_all_province)
+  
 }

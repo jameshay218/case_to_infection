@@ -1,0 +1,244 @@
+---
+title: "WTF"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,fig.width=12, fig.height=8)
+```
+
+## Set up some fake data
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+prob_detect <- 0.15
+tmax <- 100
+straggly_start <- 0
+dates <- 1:(tmax+straggly_start)
+cases <- c(rpois(straggly_start, 2), rpois(tmax,floor((1:tmax)^1.8)))
+true_onsets <- tibble(date=dates,n=cases,var="true_onsets")
+#true_onsets <- true_onsets %>% mutate(n = ifelse(date == 8,n, 0))
+
+generate_delay <- function(tmax, p) {  
+  ts <- 0:(tmax-1)
+  tmp <- dgeom(ts,p)
+  tmp <- tmp/sum(tmp)
+  cumu_geom <- cumsum(tmp)
+  stop <- runif(1)
+  index <- 0
+  x <- 0
+  while(x < stop) {
+    index <- index + 1
+    x <- cumu_geom[index]
+  }
+  ts[index]
+}
+```
+
+## Naive
+```{r}
+toy_onsets <- true_onsets
+toy_onsets <- toy_onsets %>% mutate(n = ifelse(date == 8,n, 0))
+toy_linelist <- toy_onsets %>% uncount(n) %>% select(-var)
+colnames(toy_linelist)[1] <- "date_onset"
+toy_linelist <- toy_linelist %>% mutate(delay=rgeom(n(), prob_detect)+1,
+                                date_confirmation=date_onset + delay,
+                                delay_back=rgeom(n(), prob_detect)+1,
+                                #delay_back=generate_delay(0, prob_detect)+1,
+                                date_onset_back=date_confirmation-delay_back)
+toy_linelist <- toy_linelist %>% filter(date_confirmation <= (tmax+straggly_start))
+toy_linelist_melt <- toy_linelist %>% pivot_longer(cols=c("date_confirmation","date_onset","date_onset_back"), names_to="var",values_to="date")
+sim_datp <- toy_linelist_melt %>% group_by(var, date) %>% tally() %>% bind_rows(toy_onsets) %>% 
+  ggplot() + 
+  geom_point(aes(x=date,y=n,col=var)) +
+  geom_line(aes(x=date,y=n,col=var)) +
+  #coord_cartesian(xlim=c(-straggly_start, (tmax+straggly_start))) +
+  theme_bw()
+sim_datp
+
+```
+
+
+## Maximum likelihood-ish
+```{r}
+toy_onsets <- true_onsets
+toy_onsets <- toy_onsets %>% mutate(n = ifelse(date == 8,n, 0))
+toy_linelist <- toy_onsets %>% uncount(n) %>% select(-var)
+colnames(toy_linelist)[1] <- "date_onset"
+toy_linelist <- toy_linelist %>% mutate(delay=rgeom(n(), prob_detect)+1,
+                                date_confirmation=date_onset + delay,
+                                #delay_back=rgeom(n(), prob_detect)+1,
+                                delay_back=generate_delay(8, prob_detect)+1,
+                                date_onset_back=date_confirmation-delay_back)
+toy_linelist <- toy_linelist %>% filter(date_confirmation <= (tmax+straggly_start))
+toy_linelist_melt <- toy_linelist %>% pivot_longer(cols=c("date_confirmation","date_onset","date_onset_back"), names_to="var",values_to="date")
+sim_datp1 <- toy_linelist_melt %>% group_by(var, date) %>% tally() %>% bind_rows(toy_onsets) %>% 
+  ggplot() + 
+  geom_point(aes(x=date,y=n,col=var)) +
+  geom_line(aes(x=date,y=n,col=var)) +
+  #coord_cartesian(xlim=c(-straggly_start, (tmax+straggly_start))) +
+  theme_bw()
+sim_datp1
+
+```
+
+## Run the forward model
+ie. generate confirmation dates from onset dates
+```{r}
+## Forward model
+## At least 1 day delay then geometric wait time
+linelist <- true_onsets %>% uncount(n) %>% select(-var)
+colnames(linelist)[1] <- "date_onset"
+linelist <- linelist %>% mutate(delay=rgeom(n(), prob_detect)+1,
+                                date_confirmation=date_onset + delay)
+linelist <- linelist %>% filter(date_confirmation <= (tmax+straggly_start))
+linelist_melt <- linelist %>% pivot_longer(cols=c("date_confirmation","date_onset"), names_to="var",values_to="date")
+sim_datp1 <- linelist_melt %>% group_by(var, date) %>% tally() %>% bind_rows(true_onsets) %>% 
+  ggplot() + 
+  geom_point(aes(x=date,y=n,col=var)) +
+  geom_line(aes(x=date,y=n,col=var)) +
+  coord_cartesian(xlim=c(-straggly_start, (tmax+straggly_start))) +
+  theme_bw()
+sim_datp1
+  
+```
+
+```{r}
+
+p1 <- linelist %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_onset,scales="free_y") + ggtitle("Forward")
+p2 <- linelist %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_confirmation,scales="free_y") + ggtitle("Backward")
+
+p1
+```
+```{r}
+p2
+```
+
+## Run the backward model
+ie. generate onset dates from confirmation dates
+```{r}
+## Backward model
+linelist_backward <- linelist %>% select(date_confirmation)
+true_onsets_long <- true_onsets %>% uncount(n)
+linelist_chunks <- NULL
+chunk_dates <- c(25,50,75,100)
+for(i in seq_along(chunk_dates)){
+  print(chunk_dates[i])
+  linelist_tmp <- linelist_backward %>% filter(date_confirmation <= chunk_dates[i]) #%>% 
+    #mutate(delay=rgeom(n(),prob_detect)+1,date_onset=date_confirmation-delay) %>%
+  linelist_tmp$delay <- NA
+  for(j in 1:nrow(linelist_tmp)) {
+    linelist_tmp$delay[j] <- generate_delay(linelist_tmp$date_confirmation[j],prob_detect)+1
+  }
+  linelist_tmp$date_onset <- linelist_tmp$date_confirmation - linelist_tmp$delay
+  linelist_tmp <- linelist_tmp %>% pivot_longer(cols=c("date_confirmation","date_onset"), names_to="var",values_to="date") %>%
+  bind_rows(true_onsets_long) %>% filter(date <= chunk_dates[i]) %>% mutate(chunk=paste0("day <= ",chunk_dates[i]))
+  linelist_chunks[[i]] <- linelist_tmp
+}
+print("done")
+linelist_backward_chunks <- do.call("bind_rows", linelist_chunks)
+linelist_backward_chunks$chunk <- factor(linelist_backward_chunks$chunk, levels=c("day <= 25", "day <= 50","day <= 75", "day <= 100"))
+linelist_backward <- linelist_backward_chunks %>% filter(chunk == "day <= 100") %>% select(-chunk)
+sim_datp2 <- linelist_backward_chunks %>% group_by(var, date, chunk) %>% tally() %>%
+  ggplot() + 
+  geom_point(aes(x=date,y=n,col=var)) +
+  geom_line(aes(x=date,y=n,col=var)) +
+  #coord_cartesian(xlim=c(-straggly_start, tmax+straggly_start)) +
+  facet_wrap(~chunk,scales="free") +
+  theme_bw()
+sim_datp2
+  
+```
+
+
+```{r}
+
+p3 <- linelist_backward %>% filter(var == "date_onset") %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date,scales="free_y") + ggtitle("Forward")
+p4 <- linelist_backward %>% filter(var == "date_confirmation")%>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date,scales="free_y") + ggtitle("Backward")
+p3
+```
+```{r}
+p4
+```
+
+Looks like forward and backward distributions make sense in both cases right?
+
+
+## Now do exactly the same thing for the backward model with the real data
+ie. generate onset dates from confirmation dates
+```{r}
+combined_dat_final <- read_csv("tmp.csv")
+dat_ncov <- combined_dat_final$date_confirmation
+real_dat <- tibble(date_confirmation=dat_ncov) 
+## Backward model
+#real_dat$delay <- NA
+#for(i in 1:nrow(real_dat)) {
+#  real_dat$delay[i] <- generate_delay(cumu_geom,times)
+#}
+#real_dat$date_onset <- real_dat$date_confirmation - real_dat$delay
+
+real_dat <- real_dat %>% mutate(delay=rgeom(n(), prob_detect)+1,
+                                date_onset=date_confirmation-delay)
+
+dat1 <- real_dat %>% pivot_longer(cols=c("date_confirmation","date_onset"), names_to="var",values_to="date") %>% group_by(var,date) %>% tally() %>%
+  ggplot() + geom_line(aes(x=date,y=n, col=var))
+dat1
+
+```
+
+```{r}
+p5 <- real_dat %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_onset,scales="free_y") + ggtitle("Forward - looks weird")
+p6 <- real_dat %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_confirmation,scales="free_y") + ggtitle("Backward - looks fine")
+p5
+```
+
+```{r}
+p6
+```
+
+Try again with smoothed data
+```{r}
+real_dat1 <- real_dat %>% group_by(date_confirmation) %>% tally()
+smooth_fit <- smooth.spline(real_dat1, spar=0.5)
+
+real_dat1$n <- floor(smooth_fit$y)
+
+real_dat1 <- real_dat1 %>% uncount(n)
+
+## Backward model
+#real_dat1$delay <- NA
+#for(i in 1:nrow(real_dat1)) {
+#  real_dat1$delay[i] <- real_dat1$delay[i] <- generate_delay(real_dat1$date_confirmation[i],prob_detect)+1
+#}
+#real_dat1$date_onset <- real_dat1$date_confirmation - real_dat1$delay
+
+real_dat1 <- real_dat1 %>% mutate(delay=rgeom(n(),prob_detect)+1,
+                                  date_onset=date_confirmation-delay)
+
+
+smooth_forward <- real_dat1 %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_onset,scales="free_y") + ggtitle("Forward")
+smooth_backward <- real_dat1 %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) + 
+  facet_wrap(~date_confirmation,scales="free_y") + ggtitle("Backward")
+smooth_forward
+
+```
+```{r}
+smooth_backward
+```
+
+```{r}
+dat2 <- real_dat1 %>% pivot_longer(cols=c("date_confirmation","date_onset"), names_to="var",values_to="date") %>% 
+  group_by(var,date) %>% tally() %>%
+  ggplot() + geom_line(aes(x=date,y=n, col=var))
+dat2
+```

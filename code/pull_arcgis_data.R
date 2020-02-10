@@ -167,11 +167,32 @@ ggplot(use_data[use_data$province %in% c("Hubei","Guangdong","Zheijiang","Henan"
   facet_wrap(~province,scales="free_y")
 
 
+
 use_data_diff_deaths <- use_data_subset %>% 
   group_by(province) %>%
   mutate(prev=dplyr::lag(deaths,n=1)) %>%
   #mutate(prev=ifelse(raw_day==max(raw_day), NA, prev)) %>%
   mutate(diff=deaths-prev) 
+
+provinces <- use_data_subset %>% filter(country_region %in% c("China","Mainland China")) %>% select(province) %>% distinct() %>% pull(province) %>% as.character
+use_data_subset1 <- use_data_subset %>% ungroup()
+use_data_subset1$smooth_n <- NA
+ps <- NULL
+
+for(province1 in provinces) {
+  my_counts <- use_data_subset1 %>% filter(province == province1) %>% pull(confirmed)
+  print(province1)
+  fit <- smooth.spline(my_counts, spar=0.5)
+  y <- floor(pmax(fit$y,0))
+  tmpdat <- tibble(x=fit$x, y=y,y_real=my_counts)
+  ps[[province1]] <- ggplot(tmpdat) + geom_line(aes(x=x,y=y)) + geom_line(aes(x=x,y=y_real),col="red")
+  print(tmpdat)
+  use_data_subset1 %>% filter(province == province1) %>% nrow() %>% print
+  use_data_subset1 <- use_data_subset1 %>% arrange(province, raw_day) %>% mutate(smooth_n = ifelse(province == province1, y, smooth_n))
+}
+
+use_data_subset1 %>% filter(country_region %in% c("China","Mainland China")) %>%
+  ggplot() + geom_line(aes(x=raw_day,y=confirmed),col="blue") + geom_line(aes(x=raw_day,y=smooth_n),col="red") + facet_wrap(~province,scales="free_y")
 
 use_data_diff <- use_data_subset %>% 
   group_by(province) %>%

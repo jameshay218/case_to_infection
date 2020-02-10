@@ -1,14 +1,14 @@
 ######################
 ## SETUP
-setwd("~/Documents/case_to_infection/")
-#setwd("~/GitHub/case_to_infection/")
+#setwd("~/Documents/case_to_infection/")
+setwd("~/GitHub/case_to_infection/")
 savewd <- "plots1"
 refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
 use_geometric_confirmation_delay <- FALSE
-save_augmented_results <- TRUE
+save_augmented_results <- FALSE
 
 library(ggplot2)
 library(tidyverse)
@@ -41,7 +41,7 @@ source("code/augmentation_functions.R")
 ## Need to be careful here - today's date needs to be
 ## the last day at which there are final case counts
 ## for that day
-date_today <- convert_date("04.02.2020")
+date_today <- convert_date("08.02.2020")
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 minimum_confirmation_delay <- 1
@@ -396,11 +396,11 @@ prop_symp_seen <- prop_sympt_observed_mean %>% pull(cumu_prob_total)
 thresholds_symp <- times[sapply(threshold_vals, function(x) which(prop_symp_seen > x)[1])]
 
 p_result <- plot_augmented_data(final_quantiles, confirm_data, max_date=date_today, min_date="15.12.2019",
-                          ymax1=5000,ymax2=5000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
+                          ymax1=10000,ymax2=10000,ybreaks=1000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 p_result_cumu <- plot_augmented_data(final_quantiles_cumulative, confirm_data_cumulative, max_date=date_today, min_date="15.12.2019",
-                                ymax1=50000,ymax2=30000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
+                                ymax1=100000,ymax2=50000,ybreaks=5000,thresholds=thresholds,thresholds_symp = thresholds_symp)
 
-
+p_result_cumu
 rm(symptom_observed)
 rm(symptom_unobserved)
 rm(infections_unobserved)
@@ -452,12 +452,12 @@ top_6_provinces <- factor_order[1:6]
 p_infections <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                  confirmed_data_province=confirm_dat_province,
                                  provinces = top_6_provinces,
-                                 var_name="date_infections",max_date="04.02.2020",min_date="01.12.2019",
+                                 var_name="date_infections",max_date=date_today,min_date="01.12.2019",
                                  thresholds=NULL,ncol=3)
 p_symptoms <- plot_augmented_events_byprovince(data_quantiles_province=final_quantiles_province, 
                                                  confirmed_data_province=confirm_dat_province,
                                                provinces=top_6_provinces,
-                                                 var_name="date_onset_symptoms",max_date="03.02.2020",min_date="01.12.2019",
+                                                 var_name="date_onset_symptoms",max_date=date_today,min_date="01.12.2019",
                                                  cols=c("orange","red"),
                                                  thresholds=NULL, ncol=3)
 

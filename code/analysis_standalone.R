@@ -1,7 +1,7 @@
 ######################
 ## SETUP
-#setwd("~/Documents/case_to_infection/")
-setwd("~/GitHub/case_to_infection/")
+setwd("~/Documents/case_to_infection/")
+#setwd("~/GitHub/case_to_infection/")
 savewd <- "plots1"
 refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
@@ -41,7 +41,7 @@ source("code/augmentation_functions.R")
 ## Need to be careful here - today's date needs to be
 ## the last day at which there are final case counts
 ## for that day
-date_today <- convert_date("08.02.2020")
+date_today <- convert_date("13.02.2020")
 
 weibull_stan_draws <- read.csv("data/backer_weibull_draws.csv")
 minimum_confirmation_delay <- 1

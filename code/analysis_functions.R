@@ -82,5 +82,4 @@ fit_gamma_discrete <- function(pars,dat){
   scale <- var/mean
   shape <- mean/scale
   -sum(ddgamma(dat, shape=shape, scale=scale, log=TRUE))
-  
 }

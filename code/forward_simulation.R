@@ -1,8 +1,8 @@
-refit_p_confirm_delay <- TRUE # if TRUE, fit geometric distribution to confirmation delay data;
+refit_p_confirm_delay <- FALSE # if TRUE, fit geometric distribution to confirmation delay data;
 # if FALSE, read from file
 bayesian_p_confirm_delay <- FALSE # if TRUE, use posterior for confirmation delay parameter, if FALSE, use point estimate
 
-#setwd("~/Documents/case_to_infection/")
+setwd("~/Documents/GitHub/case_to_infection/")
 # setwd("~/GitHub/case_to_infection/")
 
 library(ggplot2)
@@ -22,6 +22,8 @@ if(refit_p_confirm_delay && bayesian_p_confirm_delay) {
   rstan_options(auto_write = TRUE)
 }
 source("code/analysis_functions.R")
+source("code/date_functions.R")
+source("code/augmentation_functions.R")
 
 symptom_times <- read.csv("augmented_data/inflated_symptom_times.csv")
 symptom_times <- symptom_times[,1] %>% unlist %>% as.Date(origin = "1970-01-01")
@@ -48,7 +50,7 @@ repeats <- 1000
 ## This combines the data for Hubei and other locations in China
 ## Note this is ONLY China
 
-# kudos_dat <- readRDS("data/kudos_dat.rds")
+kudos_dat <- readRDS("data/kudos_dat.rds")
 
 # check if we have already loaded the objects, load if not
 if(!exists("kudos_dat")) {

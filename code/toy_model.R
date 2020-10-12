@@ -32,9 +32,6 @@ linelist_backward %>% ggplot() + geom_histogram(aes(x=delay),binwidth=1) +
   facet_wrap(~date_confirmation,scales="free_y") + ggtitle("Backward")
 
 
-write_csv(combined_dat_final, "tmp.csv")
-
-
 dat_ncov <- combined_dat_final$date_confirmation
 real_dat <- tibble(date_confirmation=dat_ncov) %>% 
   mutate(delay=rgeom(n(), 0.15),

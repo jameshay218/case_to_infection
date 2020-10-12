@@ -96,7 +96,6 @@ incubation_prob  <- function(symp_delay, alpha, sigma){
 }
 forward_prob_total <- function(symp_delay, confirm_delay, alpha, sigma, p_geom){
   (pweibull(symp_delay+1, alpha, sigma) - pweibull(symp_delay, alpha, sigma))*dgeom(confirm_delay-1, p_geom)
-  
 }
 
 
